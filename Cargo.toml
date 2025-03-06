@@ -1,0 +1,28 @@
+
+[package]
+name = "cljx"
+version = "0.0.0"
+edition = "2024"
+
+[features]
+default = []
+
+[dependencies]
+archery = { version = "1.2" }
+itertools = { version = "0.14" }
+nom = { version = "8.0" }
+as-any = { version = "0.3" }
+justerror = "1.1.0"
+thiserror = "2.0.12"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+
+# TODO: fork rpds and apply changes there, then depend on that fork
+#rpds = { version = "1.1" }
+rpds = { path = "../rpds", features = ["CUSTOM", "_export-entry"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
