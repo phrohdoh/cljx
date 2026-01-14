@@ -1,0 +1,926 @@
+#!/usr/bin/env -S pkgx +yq +jq +bb +glow +realpath bash>=5
+
+script_call="${0}"
+script_path="$(readlink -f "${script_call}")"
+script_name="$(basename "${script_path}")"
+script_stem="${script_name%.*}"
+script_dir="$(dirname "${script_path}")"
+root_dir="$(git root)"
+
+# Logging utilities
+################################################################################
+
+function now() {
+  date -u '+%Y-%b-%d %H:%M:%S %Z'
+}
+
+function println() {
+  if [[ $# -eq 0 ]]; then
+    printf '\n'
+  elif [[ $# -eq 1 ]]; then
+    printf '%s\n' "$*"
+  else
+    printf '%s\n' "$(printf "$1" "${*:2}")"
+  fi
+}
+
+function eprintln() {
+  if [[ $# -eq 0 ]]; then
+    printf '\n' >&2
+  elif [[ $# -eq 1 ]]; then
+    printf '%s\n' "$*" >&2
+  else
+    printf '%s\n' "$(printf "$1" "${*:2}")" >&2
+  fi
+}
+
+function logln() {
+  if [[ $# -eq 0 ]]; then
+    printf '\n'
+  elif [[ $# -eq 1 ]]; then
+    printf '[%s] [%s:%s] %s\n' "$(now)" "${script_path}" "${BASH_LINENO[0]}" "$*"
+  else
+    printf -- "[%s] [%s:%s] ${1}" "$(now)" "${script_path}" "${BASH_LINENO[0]}" "${@:2}"
+    printf '\n'
+  fi
+}
+
+function elogln() {
+  if [[ $# -eq 0 ]]; then
+    printf '\n' >&2
+  elif [[ $# -eq 1 ]]; then
+    printf '[%s] [%s:%s] %s\n' "$(now)" "${script_path}" "${BASH_LINENO[0]}" "$*" >&2
+  else
+    printf -- "$(printf "[%s] [%s:%s] %s" "$1")" "$(now)" "${script_path}" "${BASH_LINENO[0]}" "${@:2}" >&2
+    printf '\n' >&2
+  fi
+}
+
+################################################################################
+
+function sys:print_builtin_spec_yaml() {
+  local builtin_spec_yaml
+  read -r -d '' builtin_spec_yaml <<'EOF'
+
+alias:
+  cargo_build_crate: cargo build --manifest-path 
+  cargo_test_crate: cargo test --manifest-path 
+  cargo_run_crate: cargo run --manifest-path 
+
+crates:
+  cljx_cli:
+    root_dir: ${{ ctx.crates_dir }}/cljx_cli
+    manifest_path: ${{ .crates.cljx_cli.root_dir }}/Cargo.toml
+    build_shell_cmd: ${{ .alias.cargo_build_crate }} ${{ .crates.cljx_cli.manifest_path }}
+    test_shell_cmd: ${{ .alias.cargo_test_crate }} ${{ .crates.cljx_cli.manifest_path }}
+    run_shell_cmd: ${{ .alias.cargo_run_crate }} ${{ .crates.cljx_cli.manifest_path }}
+  cljx:
+    root_dir: ${{ ctx.crates_dir }}/cljx
+    manifest_path: ${{ .crates.cljx.root_dir }}/Cargo.toml
+    build_shell_cmd: ${{ .alias.cargo_build_crate }} ${{ .crates.cljx.manifest_path }}
+    test_shell_cmd: ${{ .alias.cargo_test_crate }} ${{ .crates.cljx.manifest_path }}
+    run_shell_cmd: ${{ .alias.cargo_run_crate }} ${{ .crates.cljx.manifest_path }}
+
+flows:
+- id: help
+  if: |-
+    (or (nil? *command-line-args*)
+        (empty? *command-line-args*)
+        (-> *command-line-args* first (->> (contains? #{"-h" "--help" "help"}))))
+  script_fn: help
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # The `${{ ctx.script_name }}` script:
+
+    This script's purpose is to make it easy to create and run various commands
+    ("flow"s) in the repository/project/etc that you are using it in.
+
+    In this instance, it extends the functionality of a native CLI binary.
+
+    That native binary can do 2 things:
+    - display it's help
+    - put the user into a REPL session
+
+    It alone cannot, for example, read and evaluate a string or file.
+
+    This script uses the shell's features to make both of those possible
+    without requiring any changes to (and thus recompilations of) the
+    underlying native code.
+
+    # Getting help for `${{ ctx.script_name }}`:
+    ```shell
+    ${{ ctx.script_name }} --help
+    ${{ ctx.script_name }} <flow-id> --help
+    ```
+
+    # Print flow-ids, one per line:
+    ```shell
+    ${{ ctx.script_name }} print-flow-ids
+    ```
+
+- id: print-spec-yaml
+  if: (-> *command-line-args* (some-> first) (some-> (str/replace "_" "-")) (= "print-spec-yaml"))
+  script_fn: print_spec_yaml
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} print-spec-yaml`:
+    Print the flows specification in YAML format for user reference and/or programmatic consumption.
+
+    # Examples for `${{ ctx.script_name }} print-spec-yaml`:
+    ```shell
+    ${{ ctx.script_name }} print-spec-yaml --help
+    ${{ ctx.script_name }} print-spec-yaml
+    ${{ ctx.script_name }} print-spec-yaml --raw
+    ```
+
+- id: print-spec-json
+  if: (-> *command-line-args* (some-> first) (some-> (str/replace "_" "-")) (= "print-spec-json"))
+  script_fn: print_spec_json
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} print-spec-json`:
+    Print the flows specification in JSON format for user reference and/or programmatic consumption.
+
+    # Examples for `${{ ctx.script_name }} print-spec-json`:
+    ```shell
+    ${{ ctx.script_name }} print-spec-json --help
+    ${{ ctx.script_name }} print-spec-json
+    ${{ ctx.script_name }} print-spec-json --raw
+    ```
+
+- id: print-flow-ids
+  if: |-
+    (-> *command-line-args* (some-> first) (= "print-flow-ids"))
+  shell_cmd: ${{ ctx.script_call }} print-spec-yaml | yq -p=yaml -r '.flows[].id'
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} print-flow-ids`:
+    Print flow-ids, one per line, for user reference and/or programmatic consumption.
+
+    # Examples for `${{ ctx.script_name }} print-flow-ids`:
+    ```shell
+    ${{ ctx.script_name }} print-flow-ids --help
+    ${{ ctx.script_name }} print-flow-ids
+    ```
+
+- id: create-crates
+  if: |-
+    (-> *command-line-args* (some-> first) (->> (contains? #{"create-crates"})))
+  script_fn: create_crates
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} create-crates`:
+    Easily create one or more Rust crates (libs and/or bins).
+    You can mix and match library and binary names.
+
+    # Examples for `create-crates`:
+    ```shell
+    ${{ ctx.script_name }} create-crates --help
+    ${{ ctx.script_name }} create-crates --lib l1 --bin b1 --libs l2 l3 --bins b2 b3
+    ```
+
+- id: check-crates
+  if: |-
+    (-> *command-line-args* (some-> first) (->> (contains? #{"check-crates" "check" "c"})))
+  script_fn: check_crates
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} check-crates`:
+    Run `cargo check` on some or all of the crates in the project.
+
+    # Examples for `${{ ctx.script_name }} check-crates`:
+    ```shell
+    ${{ ctx.script_name }} check-crates --help
+    ${{ ctx.script_name }} check-crates --all -- --quiet
+    ${{ ctx.script_name }} check-crates handle -- --verbose
+    ```
+
+- id: build
+  if: |-
+    (-> *command-line-args* (some-> first) (->> (contains? #{"build"})))
+  shell_cmd: ${{ .alias.cargo_build_crate }} ${{ ctx.root_dir }}/Cargo.toml
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} build`:
+    Run `cargo build` with optional arguments.
+
+    # Examples for `${{ ctx.script_name }} build`:
+    ```shell
+    ${{ ctx.script_name }} build --help
+    ${{ ctx.script_name }} build
+    ${{ ctx.script_name }} build --release
+    ${{ ctx.script_name }} build --verbose
+    ```
+
+- id: test-crates
+  if: |-
+    (-> *command-line-args* (some-> first) (->> (contains? #{"test-crates" "test" "t"})))
+  script_fn: test_crates
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} test-crates`:
+    Run `cargo test` on some or all of the crates in the project.
+
+    # Examples for `${{ ctx.script_name }} test-crates`:
+    ```shell
+    ${{ ctx.script_name }} test-crates --help
+    ${{ ctx.script_name }} test-crates --all -- --quiet
+    ${{ ctx.script_name }} test-crates handle -- --verbose
+    ```
+
+- id: eval-file
+  if: |-
+    (and (-> *command-line-args* (some-> first) (= "eval-file"))
+         (-> *command-line-args* rest empty? not))
+  script_fn: eval_file
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} eval-file`:
+    Evaluate a source file's forms from beginning to end.
+
+    # Examples for `eval-file`:
+    ```shell
+    ${{ ctx.script_name }} eval-file --help
+    ${{ ctx.script_name }} eval-file "$(git root)/samples/new.cljx"
+    ```
+
+- id: eval-string
+  if: |-
+    (and (-> *command-line-args* (some-> first) (= "eval-string"))
+         (-> *command-line-args* rest empty? not))
+  script_fn: eval_string
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} eval-string`:
+    Evaluate a source string's forms from beginning to end.
+
+    # Examples for `eval-string`:
+    ```shell
+    ${{ ctx.script_name }} eval-string --help
+    ${{ ctx.script_name }} eval-string '(prn "hi")'
+    ```
+
+- id: eval-sample
+  if: |-
+    (and (-> *command-line-args* (some-> first) (= "eval-sample"))
+         (-> *command-line-args* rest empty? not))
+  script_fn: eval_sample
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} eval-sample`:
+    Evaluate a sample source file by name (file stem) rather than file path.
+
+    # Examples for `eval-sample`:
+    ```shell
+    ${{ ctx.script_name }} eval-sample --help
+    ${{ ctx.script_name }} eval-sample do
+    ${{ ctx.script_name }} eval-sample realish
+    ```
+
+- id: repl
+  if: |-
+    (-> *command-line-args* (some-> first) (->> (contains? #{"repl"})))
+  shell_cmd: ${{ spec.crates.cljx_cli.run_shell_cmd }} repl
+  forward_args: true
+  forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} repl`:
+    Enter into a Read-Eval-Print Loop (REPL) for interactive evaluation of source code (EDN/CLJ forms).
+
+EOF
+
+println "${builtin_spec_yaml}"
+#[[ -v builtin_spec_yaml && -n "$builtin_spec_yaml" ]] && spec_json="$(yq -p=yaml -o=json <<< "${builtin_spec_yaml}")"
+}
+
+function sys:print_builtin_spec_json() {
+  yq -p=yaml -o=json <<< "$(sys:print_builtin_spec_yaml)"
+}
+
+function sys:print_spec_yaml() {
+  # based on args, this reads from:
+  # - a built-in heredoc string (default)
+  # - a file path
+  # - a passed-in string
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      (--file|-f)
+        cat "${2}"
+        shift 2
+      ;;
+      (--string|-s)
+        println "${2}"
+        shift 2
+      ;;
+      (--builtin|-b)
+        sys:print_builtin_spec_yaml
+        shift 1
+      ;;
+      (*)
+        elogln "sys:print_spec_yaml: unknown arg '${1}'"
+        return 1
+      ;;
+    esac
+    shift
+  done
+}
+
+function sys:print_spec_json() {
+  sys:print_spec_yaml "${@}" | yq -p=yaml -o=json
+}
+
+function json:set() {
+  local json="$1"
+  shift
+
+  local jq_filter='.'
+  local args=()
+  local i=0
+
+  while [[ $# -gt 1 ]]; do
+    local path="$1"
+    local value="$2"
+    jq_filter="${jq_filter} | .${path} = \$v${i}"
+    args+=( --arg "v${i}" "$value" )
+    i=$((i+1))
+  done
+
+  jq -r -c "${args[@]}" "$jq_filter" <<< "$json"
+}
+
+function json:map:has_key() {
+  local json="$1"
+  local key="$2"
+  if [[ "$(jq --arg key "$key" 'has("$key")' <<< "$json")" == 'true' ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+function ctx:new() {
+  jq -n \
+    --arg script_call "$script_call"       \
+    --arg script_path "$script_path"       \
+    --arg script_name "$script_name"       \
+    --arg script_stem "$script_stem"       \
+    --arg script_dir  "$script_dir"        \
+    --arg root_dir    "$root_dir"          \
+    --arg crates_dir  "${root_dir}/crates" \
+  '$ARGS.named'
+}
+
+function expr:eval() {
+  local tpl="$1"
+  local ctx_json="$2"
+  local spec_json="$3"
+  local flow_json="$4"
+
+  # Match any expressions of the form ${{ ... }} (nesting not supported)
+  local re='\${{[[:space:]]*([^}]+)[[:space:]]*}}'
+
+  while [[ $tpl =~ $re ]]; do
+    local full=${BASH_REMATCH[0]} # whole ${{ ... }}
+    local expr=${BASH_REMATCH[1]} # inside the {{ }}
+
+    # trim leading & trailing whitespace from expr
+    expr="${expr#"${expr%%[![:space:]]*}"}" # leading
+    expr="${expr%"${expr##*[![:space:]]}"}" # trailing
+
+    local value path jq_filter
+
+    if [[ $expr =~ ^env\. ]]; then
+      local env_var_name="${expr#env.}"
+      echo value="${!env_var_name}"
+    elif [[ $expr =~ ^ctx\. ]]; then
+      path="${expr#ctx.}"
+      jq_filter=".$path // empty"
+      value="$(jq -r "$jq_filter" <<< "$ctx_json" || printf '')"
+    elif [[ $expr =~ ^spec\. ]]; then
+      path="${expr#spec.}"
+      jq_filter=".$path // empty"
+      value="$(jq -r "$jq_filter" <<< "$spec_json" || printf '')"
+    elif [[ $expr =~ ^\. ]]; then
+      path="${expr#.}"
+      jq_filter=".$path // empty"
+      value="$(jq -r "$jq_filter" <<< "$spec_json" || printf '')"
+    elif [[ $expr =~ ^flow\. ]]; then
+      path="${expr#flow.}"
+      jq_filter=".$path // empty"
+      value="$(jq -r "$jq_filter" <<< "$flow_json" || printf '')"
+    fi
+
+    # elogln "[expr:eval] replacing '${full}' with '${value}'"
+    tpl=${tpl//$full/$value}
+  done
+  println "$tpl"
+}
+
+
+function flow.id()                     { yq -p=json -r '.id                     // ""'    <<< "$1"; }
+#function flow.tldr()                   { yq -p=json -r '.tldr                   // ""'    <<< "$1"; }
+function flow.docs()                   { yq -p=json -r '.docs                   // ""'    <<< "$1"; }
+function flow.if()                     { yq -p=json -r '.if                     // false' <<< "$1"; }
+function flow.script_fn()              { yq -p=json -r '.script_fn              // ""'    <<< "$1"; }
+function flow.shell_cmd()              { yq -p=json -r '.shell_cmd              // ""'    <<< "$1"; }
+function flow.forward_args()           { yq -p=json -r '.forward_args           // false' <<< "$1"; }
+function flow.forward_args.skip()      { yq -p=json -r '.forward_args_skip      // 0'     <<< "$1"; }
+#function flow.hooks.before.shell_cmd() { yq -p=json -r '.hooks.before.shell_cmd // ""'    <<< "$1"; }
+#function flow.hooks.before.script_fn() { yq -p=json -r '.hooks.before.script_fn // ""'    <<< "$1"; }
+#function flow.hooks.after.shell_cmd()  { yq -p=json -r '.hooks.after.shell_cmd  // ""'    <<< "$1"; }
+#function flow.hooks.after.script_fn()  { yq -p=json -r '.hooks.after.script_fn  // ""'    <<< "$1"; }
+
+
+function flow_json_by_id() {
+  local spec_json="$1"
+  [[ -z "${spec_json}" ]] && { elogln 'you must provide the spec-json to find the flow within'; return 1; }
+  local flow_id="$2"
+  [[ -z "${flow_id}" ]] && { elogln 'you must provide a flow-id'; return 1; }
+  local flow_json="$(jq -r -c --arg flow_id "${flow_id}" '.flows[] | select(.id == $flow_id)' <<< "$spec_json")"
+  #local flow_json="$(yq -p=json -o=json -r ".flows[] | select(.id == \"${flow_id}\")" <<< "$spec_json")"
+  if [[ -z "${flow_json}" || "${flow_json}" == "null" ]]; then
+    # support `hello-world` in addition to `hello_world`
+    flow_json="$(yq -p=json -o=json ".flows[] | select(.id == \"${flow_id//-/_}\")" <<< "$spec_json")"
+  fi
+  if [[ -z "${flow_json}" || "${flow_json}" == "null" ]]; then
+    elogln "no flow found for id '${flow_id}'"
+    return 1
+  else
+    println "${flow_json}"
+  fi
+}
+
+function flow:eval_if() {
+  local if_expr="$1"
+  shift
+  if [[ "$if_expr" == 'false' ]]; then
+    #elogln 'Information: The flow.if is explicitly set to false'
+    return 1
+  fi
+  local if_ret
+  if [[ $# -eq 0 ]]; then
+    #elogln 'Information: Evaluating flow.if without arguments'
+    if_ret="$(bb -e "$if_expr")"
+  elif [[ $# -gt 0 ]]; then
+    #elogln 'Information: Evaluating flow.if with arguments'
+    if_ret="$(bb -e "$if_expr" -- "${@}")"
+  else
+    #elogln 'Information: No flow.if to evaluate, defaulting to false'
+    return 1
+  fi
+  if [[ "$if_ret" == "true" ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+
+function print_spec_yaml() {
+  if [[ "$1" == '--help' || "$1" == '-h' ]]; then
+    print_docs print-spec-yaml || return $?
+    return 0
+  fi
+
+  if [[ "$1" == '--raw' ]]; then
+    elogln 'print-spec-yaml raw'
+    printf '%s\n' "${GLOBALS[spec_json_raw]}" | yq -p=json -o=yaml
+  else
+    printf '%s\n' "${GLOBALS[spec_json]}" | yq -p=json -o=yaml
+  fi
+}
+
+function print_spec_json() {
+  if [[ "$1" == '--help' || "$1" == '-h' ]]; then
+    print_docs print-spec-json || return $?
+    return 0
+  fi
+
+  if [[ "$1" == '--raw' ]]; then
+    printf '%s\n' "${GLOBALS[spec_json_raw]}" | jq .
+  else
+    printf '%s\n' "${GLOBALS[spec_json]}" | jq .
+  fi
+}
+
+function print_docs() {
+  _print_docs "${GLOBALS[spec_json]}" "$1"
+}
+
+function _print_docs() {
+  local spec_json="$1"
+  local target_flow_id="$2"
+  local target_flow_json="$(flow_json_by_id "$spec_json" "$target_flow_id")"
+  if [[ -z "$target_flow_json" || "$target_flow_json" == "null" ]]; then
+    elogln "no flow found for id '$target_flow_id'"
+    return 1
+  fi
+  local docs="$(flow.docs "$target_flow_json")"
+  local ret=0
+  if [[ -z "$docs" ]]; then
+    elogln "no documentation found for flow '${target_flow_id}'"
+    ret=1
+  else
+    #println "$docs" | glow - | sed 's/\x1b\[[0-9;]*m//g'
+    println "$docs" | glow -
+    ret=$?
+  fi
+  return $ret
+}
+
+function help() {
+  if [[ $# -eq 0 ]]; then
+    _print_docs "${GLOBALS[spec_json]}" help
+  elif [[ "$1" == '--all' || "$1" == '-a' ]]; then
+    readarray -t flow_keys <<< "$(jq -r -c '.flows | keys[]' <<< "${GLOBALS[spec_json]}")"
+    for flow_key in "${flow_keys[@]}"; do
+      println '################################################################################'
+      local flow_json="$(jq -r -c --argjson flow_key "$flow_key" '.flows[$flow_key]' <<< "${GLOBALS[spec_json]}")"
+      local flow_id="$(flow.id "$flow_json")"
+      _print_docs "${GLOBALS[spec_json]}" "$flow_id"
+      println '################################################################################'
+    done
+  elif [[ "$1" == '--help' || "$1" == '-h' ]]; then
+    _print_docs "${GLOBALS[spec_json]}" help
+  elif [[ $# -eq 1 || ( $# -eq 2 && ( "$2" == '--help' || "$2" == '-h' ) ) ]]; then
+    _print_docs "${GLOBALS[spec_json]}" "$1"
+  fi
+  local ret=$?
+  return $ret
+}
+
+function create_crates() {
+  if [[ $# -eq 0 || "$1" == '--help' || "$1" == '-h' ]]; then
+    print_docs create-crates
+    return $?
+  fi
+
+  local libs=()
+  local bins=()
+  local arg_mode=""
+  for arg in "${@}"; do
+    case "${arg}" in
+      (--lib) arg_mode="lib"; ;;
+      (--bin) arg_mode="bin"; ;;
+      (--libs) arg_mode="libs"; ;;
+      (--bins) arg_mode="bins"; ;;
+      (*)
+        case "${arg_mode}" in
+          (lib|libs) libs+=("${arg}"); ;;
+          (bin|bins) bins+=("${arg}"); ;;
+          (*)
+            elogln "unrecognized argument or missing mode before argument: '${arg}'"
+            return 1
+            ;;
+        esac
+        ;;
+    esac
+  done
+  (
+    cd "$(git root)";
+    for lib_name in "${libs[@]}"; do
+      lib_name="${lib_name//-/_}" # replace - with _
+      cargo new --lib "$(git root)/crates/${lib_name}" || return $?
+    done
+    for bin_name in "${bins[@]}"; do
+      bin_name="${bin_name//-/_}" # replace - with _
+      cargo new --bin "$(git root)/crates/${bin_name}" || return $?
+    done
+  )
+}
+
+function check_crates() {
+  local explicitly_given_crate_dirs=()
+  if [[ $# -eq 0 ]]; then
+    print_docs check-crates
+    return $?
+  fi
+
+  local all_crates='false'
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      (--help|-h)
+        print_docs check-crates
+        return $?
+      ;;
+      (--all|-a)
+        all_crates='true'
+        shift
+      ;;
+      (--)
+        shift
+        break
+      ;;
+      (*)
+        explicitly_given_crate_dirs+=("$1");
+        shift;
+      ;;
+    esac
+  done
+
+  local crate_dirs=("$explicitly_given_crate_dirs")
+  if [[ "$all_crates" == 'true' ]]; then
+    readarray -t crate_dirs <<< "$(ls "${root_dir}/crates")"
+    crate_dirs=("$root_dir" "${crate_dirs[@]}")
+  fi
+
+  for i in "${!crate_dirs[@]}"; do
+    local crate_dir="${crate_dirs[$i]//-/_}"
+    if [[ -d "${crate_dir}" ]]; then
+      : # make no change
+    elif [[ -d "${root_dir}/crates/${crate_dir}" ]]; then
+      crate_dirs[$i]="${root_dir}/crates/${crate_dir}"
+    elif [[ -d "${root_dir}/crates/cljx_${crate_dir}" ]]; then
+      crate_dirs[$i]="${root_dir}/crates/cljx_${crate_dir}"
+    else
+      elogln "Crate directory does not exist: '$crate_dir'"
+      return 1
+    fi
+    crate_dirs[$i]="$(realpath "${crate_dirs[$i]}")"
+  done
+
+  elogln "Checking crates: ${crate_dirs[*]}"
+  for crate_dir in "${crate_dirs[@]}"; do
+    if [[ -f "${crate_dir}/Cargo.toml" ]]; then
+      elogln "Checking crate: '$(basename "$crate_dir")'"
+      set -- "${@//-/_}"
+      # printf 'cargo check --manifest-path %s %s\n' "${crate_dir}/Cargo.toml" "$(IFS=' ' printf '%s' "$*")" >&2 || exit $?
+      if [[ $# -gt 0 ]]; then
+        cargo check --manifest-path "${crate_dir}/Cargo.toml" "$(IFS=' ' printf '%s' "$*")" || exit $?
+      else
+        cargo check --manifest-path "${crate_dir}/Cargo.toml" || exit $?
+      fi
+    else
+      elogln "Skipping unknown crate directory: '${crate_dir}'"
+    fi
+  done
+}
+
+function test_crates() {
+  local explicitly_given_crate_dirs=()
+  if [[ $# -eq 0 ]]; then
+    print_docs test-crates
+    return $?
+  fi
+
+  local all_crates='false'
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      (--help|-h)
+        print_docs test-crates
+        return $?
+      ;;
+      (--all|-a)
+        all_crates='true'
+        shift
+      ;;
+      (--)
+        shift
+        break
+      ;;
+      (*)
+        explicitly_given_crate_dirs+=("$1");
+        shift;
+      ;;
+    esac
+  done
+
+  local crate_dirs=("$explicitly_given_crate_dirs")
+  if [[ "$all_crates" == 'true' ]]; then
+    readarray -t crate_dirs <<< "$(ls "${root_dir}/crates")"
+    crate_dirs=("$root_dir" "${crate_dirs[@]}")
+  fi
+
+  for i in "${!crate_dirs[@]}"; do
+    local crate_dir="${crate_dirs[$i]//-/_}"
+    if [[ -d "${crate_dir}" ]]; then
+      : # make no change
+    elif [[ -d "${root_dir}/crates/${crate_dir}" ]]; then
+      crate_dirs[$i]="${root_dir}/crates/${crate_dir}"
+    elif [[ -d "${root_dir}/crates/cljx_${crate_dir}" ]]; then
+      crate_dirs[$i]="${root_dir}/crates/cljx_${crate_dir}"
+    else
+      elogln "Crate directory does not exist: '$crate_dir'"
+      return 1
+    fi
+    crate_dirs[$i]="$(realpath "${crate_dirs[$i]}")"
+  done
+
+  elogln "Testing crates in directories: ${crate_dirs[*]}"
+  for crate_dir in "${crate_dirs[@]}"; do
+    if [[ -f "${crate_dir}/Cargo.toml" ]]; then
+      elogln "Testing crate: '$(basename "$crate_dir")'"
+      set -- "${@//-/_}"
+      # printf 'cargo test --manifest-path %s %s\n' "${crate_dir}/Cargo.toml" "$(IFS=' ' printf '%s' "$*")" >&2 || exit $?
+      if [[ $# -gt 0 ]]; then
+        cargo test --manifest-path "${crate_dir}/Cargo.toml" "$(IFS=' ' printf '%s' "$*")" || exit $?
+      else
+        cargo test --manifest-path "${crate_dir}/Cargo.toml" || exit $?
+      fi
+    else
+      elogln "Skipping unknown crate directory: '${crate_dir}'"
+    fi
+  done
+}
+
+function eval_string() {
+  if [[ $# -eq 0 || "$1" == '--help' || "$1" == '-h' ]]; then
+    print_docs eval-string
+    return 0
+  fi
+  [[ $# -eq 0 ]] && { elogln 'you must provide source to be evaluated'; return 1; }
+  # printf '[%s (quit)]' "$*"; printf '\n';
+  #{ printf '[%s (quit)]' "$(printf '%s ' "$*" | tr '\n' ' ')"; printf '\n'; } | cargo run --manifest-path "${root_dir}/Cargo.toml" --quiet -- repl --no-startup-messages
+  local shell_cmd="$(yq -p=json '.crates.cljx_cli.run_shell_cmd' <<< "${GLOBALS[spec_json]}")"
+  # echo "printf '"$(IFS=' ' printf '%s' "$*")"'" '|' "$shell_cmd" repl --no-startup-messages
+  # { IFS=' ' printf '%s' "$*"; printf '\n'; } | eval "$shell_cmd" repl --no-startup-messages
+  eval "$shell_cmd" eval-string "'$(IFS=' ' printf '%s' "$*"; printf '\n')'";
+}
+
+function eval_file() {
+  # elogln "$(IFS=' ' printf '%s' "$*")"
+  if [[ $# -eq 0 || "$1" == '--help' || "$1" == '-h' ]]; then
+    print_docs eval-file
+    return $?
+  fi
+  local file_path="$1"
+  [[ -z "${file_path}" ]] && { elogln 'you must provide a file path to be evaluated'; return 1; }
+  [[ ! -r "${file_path}" ]] && { elogln 'the provided file path could not be read'; return 1; }
+  local shell_cmd="$(yq -p=json '.crates.cljx_cli.run_shell_cmd' <<< "${GLOBALS[spec_json]}")"
+  eval "$shell_cmd" eval-file "$file_path"
+}
+
+function eval_sample() {
+  if [[ $# -eq 0 || "$1" == '--help' || "$1" == '-h' ]]; then
+    print_docs eval-sample
+    return 0
+  fi
+  [[ $# -eq 0 ]] && { elogln 'you must name a sample to be evaluated'; return 1; }
+  eval_file "${root_dir}/samples/${1}.cljx"
+}
+
+
+declare -gA GLOBALS=()
+
+function main() {
+  local ctx_json="$(ctx:new)"
+  local spec_yaml="$(sys:print_spec_yaml --builtin)"
+  local spec_json="$(yq -p=yaml -o=json -r <<< "$spec_yaml")"
+
+  GLOBALS=()
+  GLOBALS['ctx_json']="$ctx_json"
+  GLOBALS['spec_yaml_raw']="$spec_yaml"
+  GLOBALS['spec_json_raw']="$spec_json"
+
+  spec_json="$(expr:eval "$spec_json" "$ctx_json" "$spec_json")"
+
+  # readarray -t aliases_keys <<< "$(jq -r -c '.aliases | keys[]' <<< "$spec_json")"
+  readarray -t flow_keys <<< "$(jq -r -c '.flows | keys[]' <<< "$spec_json")"
+
+  #spec_json="$(
+  #  local new_flows_json="[]";
+  #  for flow_key in "${flow_keys[@]}"; do
+  #    local flow_json="$(jq -r -c --argjson flow_key "$flow_key" '.flows[$flow_key]' <<< "$spec_json")"
+  #    local new_flow_json="$(expr:eval "$flow_json" "$ctx_json" "$spec_json" "$flow_json")"
+  #    new_flows_json="$(jq -r -c --argjson new_flow "$new_flow_json" '.+[$new_flow]' <<< "$new_flows_json")"
+  #  done;
+  #
+  #  local new_aliases_json="{}";
+  #  for alias_key in "${aliases_keys[@]}"; do
+  #    local alias_value="$(jq -r -c --arg alias_key "$alias_key" '.aliases[$alias_key]' <<< "$spec_json")"
+  #    local new_alias_value="$(expr:eval "$alias_value" "$ctx_json" "$spec_json")"
+  #    new_aliases_json="$(jq -r -c --arg alias_key "$alias_key" --arg alias_value "$new_alias_value" '.+{$alias_key:$alias_value}' <<< "$new_aliases_json")"
+  #  done;
+  #
+  #  jq -r \
+  #     -c \
+  #     --argjson new_flows "$new_flows_json" \
+  #     --argjson new_aliases "$new_aliases_json" \
+  #     '.flows=$new_flows | .aliases=$new_aliases' \
+  #     <<< "$spec_json";
+  #)"
+
+  GLOBALS['spec_json']="$spec_json"
+
+  for flow_key in "${flow_keys[@]}"; do
+    local flow_json="$(jq -r -c --argjson flow_key "$flow_key" '.flows[$flow_key]' <<< "$spec_json")"
+    local flow_id="$(jq -r -c '.id' <<< "$flow_json")"
+    local flow_if="$(jq -r -c '.if // false' <<< "$flow_json")"
+
+    #elogln "$(printf "Question: Shall we execute flow '%s'?" "$flow_id")"
+    if ! flow:eval_if "$flow_if" "${@}"; then
+      #elogln "$(printf "Decision: No, we shall not execute flow '%s'." "$flow_id")"
+      #elogln ''
+      continue
+    fi
+    #elogln "$(printf "Decision: Yes, we shall execute flow '%s'." "$flow_id")"
+    #elogln ''
+
+    GLOBALS['flow_json']="$flow_json"
+    GLOBALS['flow.id']="$flow_id"
+    GLOBALS['flow.if']="$flow_if"
+    GLOBALS['flow.docs']="$(              jq -r -c '.docs              // ""'    <<< "$flow_json")"
+    GLOBALS['flow.working_dir']="$(       jq -r -c '.working_dir       // ""'    <<< "$flow_json")"
+    GLOBALS['flow.script_fn']="$(         jq -r -c '.script_fn         // ""'    <<< "$flow_json")"
+    GLOBALS['flow.shell_cmd']="$(         jq -r -c '.shell_cmd         // ""'    <<< "$flow_json")"
+    GLOBALS['flow.forward_args']="$(      jq -r -c '.forward_args      // false' <<< "$flow_json")"
+    GLOBALS['flow.forward_args.skip']="$( jq -r -c '.forward_args_skip // 0'     <<< "$flow_json")"
+
+    local args=()
+    if [[ "${GLOBALS[flow.forward_args]}" == 'true' ]]; then
+      local args_start_idx=$(( ${GLOBALS['flow.forward_args.skip']} + 1 ))
+      args=("${@:${args_start_idx}}")
+    fi
+    #elogln '%s' "$(printf "flow '%s' args (%s):" "$flow_id" "${#args[@]}")"
+    #for arg in "${args[@]}"; do
+    #  elogln "  arg: '%s'" "${arg}"
+    #done
+
+    local flow_env=()
+    while IFS= read -r entry; do
+      local key val
+      key="$(jq -r '.key'   <<< "$entry")"
+      val="$(jq -r '.value' <<< "$entry")"
+      [[ -n "$key" && -n "$val" ]] && flow_env+=("${key}=${val}")
+    done < <(jq -c '.env // {} | to_entries[]' <<< "$flow_json")
+    #elogln '%s' "$(printf "flow '%s' env vars (%s):" "$flow_id" "${#flow_env[@]}")"
+    #for kv in "${flow_env[@]}"; do
+    #  elogln "  %s" "${kv}"
+    #done
+
+    [[ -n "${GLOBALS['flow.working_dir']}" ]] && pushd "${GLOBALS['flow.working_dir']}" 1>/dev/null
+
+    local ret=0
+    if [[ -n "${GLOBALS[flow.script_fn]}" ]]; then
+      (
+        #elogln "exec \$flow.script_fn ${GLOBALS[flow.script_fn]} ${args[@]}"
+        [[ ${#flow_env[@]} -ne 0 ]] && export "${flow_env[*]}"
+        "${GLOBALS[flow.script_fn]}" ${args[@]}
+      )
+      ret=$?
+      #if (( ret != 0 )); then
+      #  : #elogln "$(printf 'fail[%s]: eval %s' "$ret" "${GLOBALS[flow.script_fn]}")"
+      #fi
+    elif [[ -n "${GLOBALS[flow.shell_cmd]}" ]]; then
+      (
+        #elogln "exec \$flow.shell_cmd ${GLOBALS[flow.shell_cmd]} ${args[@]}"
+        [[ ${#flow_env[@]} -ne 0 ]] && export "${flow_env[*]}"
+        eval "${GLOBALS[flow.shell_cmd]}" ${args[@]}
+      )
+      ret=$?
+      #if (( ret != 0 )); then
+      #  : #elogln 'fail[%s]: eval %s' "$ret" "${GLOBALS[flow.shell_cmd]}"
+      #fi
+    else
+      ret=1
+      elogln "$(printf "fail[%s]: flow '%s' does not have script_fn nor shell_cmd defined" "$ret" "$flow_id")"
+    fi
+
+    [[ -n "${GLOBALS['flow.working_dir']}" ]] && popd 1>/dev/null
+
+    return $ret
+  done
+
+  elogln 'Did not find flow to execute.'
+  return 1
+
+  #for flow_key in "${flow_keys[@]}"; do
+  #  flow:process "$flow_key" "${@}"
+  #  local flow_process_ret=$?
+  #  case $flow_process_ret in
+  #    (0) return 0; ;; # successful execution to completion, all okay
+  #    (1) continue; ;; # do not exec this flow for the given args
+  #    (2) return 1; ;; # failed execution of flow
+  #    (*) elogln "unexpected exit code from processing flow '${flow_id}': ${flow_process_ret}"; return
+  #  esac
+  #done
+}
+
+
+# setup is complete, run main
+################################################################################
+
+#exec   > >(tee -ia "${script_stem}.log")
+#exec  2> >(tee -ia "${script_stem}.log" >&2)
+## 19 is arbitrary but must be an unallocated file descriptor
+#exec 19> "${script_stem}.log"
+#export BASH_XTRACEFD=19
+
+pushd "$root_dir" 1>/dev/null
+#set -x
+main "${@}"
+ret=$?
+#set +x
+popd 1>/dev/null || {}
+exit $ret
