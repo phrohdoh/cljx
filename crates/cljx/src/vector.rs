@@ -178,4 +178,130 @@ mod tests {
         // assert
         assert_eq!(*nth_5, *or_value);
     }
+
+    #[test]
+    fn new_empty_creates_empty_vector() {
+        let vector = Vector::new_empty();
+        assert_eq!(vector.len(), 0);
+    }
+
+    #[test]
+    fn new_with_elements() {
+        let vector = Vector::new(vec![
+            Value::integer_rc(1),
+            Value::integer_rc(2),
+            Value::integer_rc(3),
+        ]);
+        assert_eq!(vector.len(), 3);
+        assert_eq!(*vector[0], Value::integer(1));
+    }
+
+    #[test]
+    fn new_empty_value() {
+        let val = Vector::new_empty_value();
+        assert!(val.is_vector());
+        if let crate::Value::Vector(v, _) = val {
+            assert_eq!(v.len(), 0);
+        } else {
+            panic!("Expected Vector variant");
+        }
+    }
+
+    #[test]
+    fn new_value() {
+        let val = Vector::new_value(vec![
+            Value::integer_rc(10),
+            Value::integer_rc(20),
+        ]);
+        assert!(val.is_vector());
+        if let crate::Value::Vector(v, _) = val {
+            assert_eq!(v.len(), 2);
+            assert_eq!(*v[0], Value::integer(10));
+        } else {
+            panic!("Expected Vector variant");
+        }
+    }
+
+    #[test]
+    fn length_increases_with_push_back() {
+        let mut vector = Vector::new_empty();
+        assert_eq!(vector.len(), 0);
+        vector.push_back(Value::integer_rc(1));
+        assert_eq!(vector.len(), 1);
+        vector.push_back(Value::integer_rc(2));
+        assert_eq!(vector.len(), 2);
+        vector.push_back(Value::integer_rc(3));
+        assert_eq!(vector.len(), 3);
+    }
+
+    #[test]
+    fn fifo_ordering_with_push_back() {
+        let mut vector = Vector::new_empty();
+        vector.push_back(Value::integer_rc(1));
+        vector.push_back(Value::integer_rc(2));
+        vector.push_back(Value::integer_rc(3));
+        // insertion order should be preserved: 1, 2, 3
+        assert_eq!(*vector[0], Value::integer(1));
+        assert_eq!(*vector[1], Value::integer(2));
+        assert_eq!(*vector[2], Value::integer(3));
+    }
+
+    #[test]
+    fn multiple_pushes_preserve_insertion_order() {
+        let mut vector = Vector::new_empty();
+        for i in 1..=5 {
+            vector.push_back(Value::integer_rc(i));
+        }
+        // Order should be: 1, 2, 3, 4, 5
+        assert_eq!(*vector[0], Value::integer(1));
+        assert_eq!(*vector[1], Value::integer(2));
+        assert_eq!(*vector[2], Value::integer(3));
+        assert_eq!(*vector[3], Value::integer(4));
+        assert_eq!(*vector[4], Value::integer(5));
+    }
+
+    #[test]
+    fn equality_with_same_elements() {
+        let vector1 = Vector::new(vec![
+            Value::integer_rc(1),
+            Value::integer_rc(2),
+        ]);
+        let vector2 = Vector::new(vec![
+            Value::integer_rc(1),
+            Value::integer_rc(2),
+        ]);
+        assert_eq!(vector1, vector2);
+    }
+
+    #[test]
+    fn inequality_with_different_elements() {
+        let vector1 = Vector::new(vec![Value::integer_rc(1)]);
+        let vector2 = Vector::new(vec![Value::integer_rc(2)]);
+        assert_ne!(vector1, vector2);
+    }
+
+    #[test]
+    fn cloned_vector_equals_original() {
+        let vector1 = Vector::new(vec![
+            Value::integer_rc(1),
+            Value::integer_rc(2),
+            Value::integer_rc(3),
+        ]);
+        let vector2 = vector1.clone();
+        assert_eq!(vector1, vector2);
+    }
+
+    #[test]
+    fn into_value() {
+        let vector = Vector::new(vec![Value::integer_rc(42)]);
+        let val = vector.into_value();
+        assert!(val.is_vector());
+    }
+
+    #[test]
+    fn into_value_rc() {
+        let vector = Vector::new(vec![Value::integer_rc(99)]);
+        let rc_val = vector.into_value_rc();
+        assert!(rc_val.is_vector());
+    }
 }

@@ -138,3 +138,164 @@ impl fmt::Debug for Set {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_empty_creates_empty_set() {
+        let set = Set::new_empty();
+        assert_eq!(set.len(), 0);
+    }
+
+    #[test]
+    fn new_with_elements() {
+        let set = Set::new(vec![
+            Value::integer_rc(1),
+            Value::integer_rc(2),
+            Value::integer_rc(3),
+        ]);
+        assert_eq!(set.len(), 3);
+    }
+
+    #[test]
+    fn new_value() {
+        let val = Set::new_value(vec![
+            Value::integer_rc(10),
+            Value::integer_rc(20),
+        ]);
+        assert!(val.is_set());
+        if let crate::Value::Set(s, _) = val {
+            assert_eq!(s.len(), 2);
+        } else {
+            panic!("Expected Set variant");
+        }
+    }
+
+    #[test]
+    fn insert_adds_new_element() {
+        let mut set = Set::new_empty();
+        set.insert(Value::integer_rc(1));
+        assert_eq!(set.len(), 1);
+        assert!(set.contains(&Value::integer_rc(1)));
+    }
+
+    #[test]
+    fn insert_prevents_duplicate_by_value_equality() {
+        let mut set = Set::new_empty();
+        let val1 = Value::integer_rc(42);
+        let val2 = Value::integer_rc(42);
+        set.insert(val1);
+        set.insert(val2);
+        // Should still be 1 element
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn insert_prevents_duplicate_by_pointer_equality() {
+        let mut set = Set::new_empty();
+        let val = Value::integer_rc(42);
+        set.insert(val.clone());
+        set.insert(val.clone());
+        // Should still be 1 element
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn insert_cannot_insert_same_value_twice() {
+        let mut set = Set::new_empty();
+        set.insert(Value::integer_rc(100));
+        set.insert(Value::integer_rc(100));
+        set.insert(Value::integer_rc(100));
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn insert_allows_multiple_distinct_values() {
+        let mut set = Set::new_empty();
+        set.insert(Value::integer_rc(1));
+        set.insert(Value::integer_rc(2));
+        set.insert(Value::integer_rc(3));
+        assert_eq!(set.len(), 3);
+    }
+
+    #[test]
+    fn get_returns_some_for_present_value() {
+        let set = Set::new(vec![Value::integer_rc(42)]);
+        let result = set.get(&Value::integer_rc(42));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn get_returns_none_for_missing_value() {
+        let set = Set::new(vec![Value::integer_rc(42)]);
+        let result = set.get(&Value::integer_rc(99));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn get_or_nil_returns_nil_for_missing_value() {
+        let set = Set::new(vec![Value::integer_rc(42)]);
+        let result = set.get_or_nil(&Value::integer_rc(99));
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn get_panicing_panics_on_missing_value() {
+        let set = Set::new(vec![Value::integer_rc(42)]);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = set.get_panicing(&Value::integer_rc(99));
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn remove_removes_element_and_returns_value() {
+        let mut set = Set::new(vec![
+            Value::integer_rc(1),
+            Value::integer_rc(2),
+            Value::integer_rc(3),
+        ]);
+        let removed = set.remove(&Value::integer_rc(2));
+        assert!(removed.is_some());
+        assert_eq!(set.len(), 2);
+        assert!(!set.contains(&Value::integer_rc(2)));
+    }
+
+    #[test]
+    fn remove_returns_none_for_non_existent_value() {
+        let mut set = Set::new(vec![Value::integer_rc(42)]);
+        let removed = set.remove(&Value::integer_rc(99));
+        assert!(removed.is_none());
+    }
+
+    #[test]
+    fn remove_allows_re_insert() {
+        let mut set = Set::new(vec![Value::integer_rc(42)]);
+        set.remove(&Value::integer_rc(42));
+        assert_eq!(set.len(), 0);
+        set.insert(Value::integer_rc(42));
+        assert_eq!(set.len(), 1);
+        assert!(set.contains(&Value::integer_rc(42)));
+    }
+
+    #[test]
+    fn contains_returns_false_for_non_existent() {
+        let set = Set::new(vec![Value::integer_rc(42)]);
+        assert!(!set.contains(&Value::integer_rc(99)));
+    }
+
+    #[test]
+    fn equality_with_same_elements() {
+        let set1 = Set::new(vec![
+            Value::integer_rc(1),
+            Value::integer_rc(2),
+        ]);
+        let set2 = Set::new(vec![
+            Value::integer_rc(1),
+            Value::integer_rc(2),
+        ]);
+        assert_eq!(set1, set2);
+    }
+}
+
