@@ -837,7 +837,7 @@ pub mod parse {
 
     #[tracing::instrument(fields(input), ret, level = "info")]
     pub fn try_parse_symbol(env: RcEnv, input: &'_ str) -> ParseResult<'_> {
-        let symbol_charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*_+-=~:[]{}<>.";
+        let symbol_charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*_+-=~<>.";
         let build_symbol_chars = || recognize(many1(one_of(symbol_charset)));
 
         // Try to parse a qualified symbol (namespace/name), falling back to unqualified
@@ -869,7 +869,7 @@ pub mod parse {
     #[tracing::instrument(fields(input), ret, level = "info")]
     pub fn try_parse_keyword(env: RcEnv, input: &'_ str) -> ParseResult<'_> {
         // Charset without : (prefix) and / (namespace separator)
-        let keyword_charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*_+-=~[]{}<>.";
+        let keyword_charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*_+-=~<>.";
         let build_keyword_chars = || recognize(many1(one_of(keyword_charset)));
 
         // Consume the initial `:` or `::`
@@ -976,237 +976,15 @@ pub mod parse {
 
     // ========== TOP-LEVEL API ==========
 
-    #[tracing::instrument(fields(input), ret, level = "info")]
-    pub fn parse(env: RcEnv, input: &str) -> Result<RcValue, String> {
-        match try_parse_one(env, input) {
-            Ok(("", value)) => Ok(value),
-            Ok((remaining, _)) => Err(format!("Unexpected trailing input: {}", remaining)),
-            Err(e) => Err(format!("Parse error: {:?}", e)),
-        }
-    }
+    // #[tracing::instrument(fields(input), ret, level = "info")]
+    // pub fn parse(env: RcEnv, input: &str) -> Result<RcValue, String> {
+    //     match try_parse_one(env, input) {
+    //         Ok(("", value)) => Ok(value),
+    //         Ok((remaining, _)) => Err(format!("Unexpected trailing input: {}", remaining)),
+    //         Err(e) => Err(format!("Parse error: {:?}", e)),
+    //     }
+    // }
 }
-
-
-/*
-pub mod parse_old {
-    use std::rc::Rc;
-
-    use crate::{Value, Symbol, Keyword, RcEnvironment as RcEnv};
-    use nom::{
-        IResult,
-        Parser,
-        branch::alt,
-        bytes::complete::{is_a, tag, take_until},
-        character::complete::{char, one_of},
-        combinator::{map, opt, recognize, value},
-        multi::{many0, many1, separated_list0},
-        sequence::{delimited, preceded, separated_pair, terminated, tuple}
-    };
-
-    pub type ParseInput<'input> = &'input str;
-    pub type ParseOutput = Value;
-    pub type ParseResult<'input> = IResult<ParseInput<'input>, ParseOutput>;
-    pub type DiscardParseResult<'input> = IResult<ParseInput<'input>, ()>;
-
-    pub fn ws0(input: ParseInput) -> DiscardParseResult {
-        let mut parser = value((), many0(one_of(", \t\r\n")));
-        parser(input)
-    }
-
-    pub fn ws1(input: ParseInput) -> DiscardParseResult {
-        let mut parser = value((), many1(one_of(", \t\r\n")));
-        parser(input)
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_one(input: ParseInput) -> ParseResult {
-        let parser = alt((
-            try_parse_nil     ,
-            try_parse_boolean ,
-            try_parse_number  ,
-            try_parse_string  ,
-            try_parse_list    ,
-            try_parse_vector  ,
-            try_parse_set     ,
-            try_parse_map     ,
-            try_parse_keyword ,
-            try_parse_symbol  ,
-        ));
-        preceded(ws0, parser)(input)
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_nil(input: ParseInput) -> ParseResult {
-        let mut parser = value((), tag("nil"));
-        let (input, _) = parser(input)?;
-        Ok((input, Value::nil()))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_boolean(input: ParseInput) -> ParseResult {
-        let mut parser = alt((
-            value(true, tag("true")),
-            value(false, tag("false")),
-        ));
-        let (input, boolean) = parser(input)?;
-        Ok((input, Value::boolean(boolean)))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_number(input: ParseInput) -> ParseResult {
-        // TODO: handle (i.e. fail) 0._1
-        //       ^ currently succeeds with Value::Number(0.0)
-        let (input, num_text) = recognize(tuple((
-            opt(tag("-")),
-            one_of("0123456789"),
-            many0(one_of("0123456789_")),
-            opt(tuple((
-                tag("."),
-                one_of("0123456789"),
-                many0(one_of("0123456789_")),
-            ))),
-        )))(input)?;
-
-        let num_text = num_text.chars().filter(|ch| *ch != '_').collect::<String>();
-
-        let number = num_text.as_str().try_into().unwrap(); // TODO: handle Err properly
-        Ok((input, Value::float(number)))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_string(input: ParseInput) -> ParseResult {
-        let open = char('"');
-        let inner = take_until("\"");
-        let close = char('"');
-        let value_fn = Value::string;
-
-        let mut parser = delimited(
-            open,
-            inner,
-            close,
-        );
-
-        let (input, string) = parser(input)?;
-        Ok((input, value_fn(string.to_owned())))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_list(input: ParseInput) -> ParseResult {
-        let open = char('(');
-        let item = try_parse_one.map(Rc::new);
-        let close = char(')');
-        let value_fn = Value::new_list;
-
-        let mut parser = delimited(
-            terminated(open, ws0),
-            separated_list0(ws1, item),
-            preceded(ws0, close),
-        );
-
-        let (input, items) = parser(input)?;
-        Ok((input, value_fn(items)))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_vector(input: ParseInput) -> ParseResult {
-        let open = char('[');
-        let item = try_parse_one.map(Rc::new);
-        let close = char(']');
-        let value_fn = Value::new_vector;
-
-        let mut parser = delimited(
-            terminated(open, ws0),
-            separated_list0(ws1, item),
-            preceded(ws0, close),
-        );
-
-        let (input, items) = parser(input)?;
-        Ok((input, value_fn(items)))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_set(input: ParseInput) -> ParseResult {
-        let open = preceded(char('#'), char('{'));
-        let item = try_parse_one.map(Rc::new);
-        let close = char('}');
-        let value_fn = Value::new_set;
-
-        let mut parser = delimited(
-            terminated(open, ws0),
-            separated_list0(ws1, item),
-            preceded(ws0, close),
-        );
-
-        let (input, items) = parser(input)?;
-        Ok((input, value_fn(items)))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_map(input: ParseInput) -> ParseResult {
-        let open = char('{');
-        let item = try_parse_one;
-        let entry = separated_pair(item.map(Rc::new), ws1, item.map(Rc::new));
-        let close = char('}');
-        let value_fn = Value::new_map;
-
-        let mut parser = delimited(
-            terminated(open, ws0),
-            separated_list0(ws1, entry),
-            preceded(ws0, close),
-        );
-
-        let (input, entries) = parser(input)?;
-        Ok((input, value_fn(entries)))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_keyword(input: ParseInput) -> ParseResult {
-        let (input, _) = char(':')(input)?;
-        // TODO: support forms such as ::foo and ::foo/bar
-
-        let mut namespace = None;
-
-        let parser = is_a(".~!@$%^&*_-+=|<>?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
-        let (input, mut name) = parser(input)?;
-
-        let (mut input, is_qualified) = map(opt(char('/')), |x| x.is_some())(input)?;
-        if is_qualified {
-            let (input_, name_) = parser(input)?;
-            input = input_;
-            namespace = Some(name);
-            name = name_;
-        }
-
-        let symbol = match namespace {
-            Some(namespace) => Keyword::new_qualified(namespace, name),
-            None => Keyword::new_unqualified(name),
-        };
-        Ok((input, Value::keyword(symbol)))
-    }
-
-    // #[tracing::instrument(ret, level = "info")]
-    pub fn try_parse_symbol(input: ParseInput) -> ParseResult {
-        let mut namespace = None;
-
-        let parser = is_a(".~!@$%^&*_-+=|<>?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
-        let (input, mut name) = parser(input)?;
-
-        let (mut input, is_qualified) = map(opt(char('/')), |x| x.is_some())(input)?;
-        if is_qualified {
-            let (input_, name_) = parser(input)?;
-            input = input_;
-            namespace = Some(name);
-            name = name_;
-        }
-
-        let symbol = match namespace {
-            Some(namespace) => Symbol::new_qualified(namespace, name),
-            None => Symbol::new_unqualified(name),
-        };
-        Ok((input, Value::symbol(symbol)))
-    }
-}
-*/
 
 #[cfg(test)]
 mod tests {
@@ -1369,5 +1147,362 @@ mod tests {
         let result = parse::try_parse_keyword(env, input);
         // assert
         assert!(result.is_err(), "::foo/ is unreadable, missing name after /");
+    }
+
+    // Empty list tests
+    #[test]
+    fn empty_list() {
+        let env = Environment::new_empty_rc();
+        let input = "()";
+        let result = parse::try_parse_list(env, input);
+        let (remaining, value) = result.expect("should parse empty list");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_list().expect("should be a list");
+        assert!(items.is_empty(), "list should be empty");
+    }
+
+    #[test]
+    fn empty_list_with_space() {
+        let env = Environment::new_empty_rc();
+        let input = "( )";
+        let result = parse::try_parse_list(env, input);
+        let (remaining, value) = result.expect("should parse empty list with space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_list().expect("should be a list");
+        assert!(items.is_empty(), "list should be empty");
+    }
+
+    #[test]
+    fn empty_list_with_comma() {
+        let env = Environment::new_empty_rc();
+        let input = "(,)";
+        let result = parse::try_parse_list(env, input);
+        let (remaining, value) = result.expect("should parse empty list with comma");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_list().expect("should be a list");
+        assert!(items.is_empty(), "list should be empty");
+    }
+
+    #[test]
+    fn empty_list_with_comma_space() {
+        let env = Environment::new_empty_rc();
+        let input = "(, )";
+        let result = parse::try_parse_list(env, input);
+        let (remaining, value) = result.expect("should parse empty list with comma and space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_list().expect("should be a list");
+        assert!(items.is_empty(), "list should be empty");
+    }
+
+    #[test]
+    fn empty_list_with_space_comma() {
+        let env = Environment::new_empty_rc();
+        let input = "( ,)";
+        let result = parse::try_parse_list(env, input);
+        let (remaining, value) = result.expect("should parse empty list with space and comma");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_list().expect("should be a list");
+        assert!(items.is_empty(), "list should be empty");
+    }
+
+    #[test]
+    fn empty_list_with_space_comma_space() {
+        let env = Environment::new_empty_rc();
+        let input = "( , )";
+        let result = parse::try_parse_list(env, input);
+        let (remaining, value) = result.expect("should parse empty list with space, comma, and space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_list().expect("should be a list");
+        assert!(items.is_empty(), "list should be empty");
+    }
+
+    // Empty vector tests
+    #[test]
+    fn empty_vector() {
+        let env = Environment::new_empty_rc();
+        let input = "[]";
+        let result = parse::try_parse_vector(env, input);
+        let (remaining, value) = result.expect("should parse empty vector");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_vector().expect("should be a vector");
+        assert!(items.is_empty(), "vector should be empty");
+    }
+
+    #[test]
+    fn empty_vector_with_space() {
+        let env = Environment::new_empty_rc();
+        let input = "[ ]";
+        let result = parse::try_parse_vector(env, input);
+        let (remaining, value) = result.expect("should parse empty vector with space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_vector().expect("should be a vector");
+        assert!(items.is_empty(), "vector should be empty");
+    }
+
+    #[test]
+    fn empty_vector_with_comma() {
+        let env = Environment::new_empty_rc();
+        let input = "[,]";
+        let result = parse::try_parse_vector(env, input);
+        let (remaining, value) = result.expect("should parse empty vector with comma");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_vector().expect("should be a vector");
+        assert!(items.is_empty(), "vector should be empty");
+    }
+
+    #[test]
+    fn empty_vector_with_comma_space() {
+        let env = Environment::new_empty_rc();
+        let input = "[, ]";
+        let result = parse::try_parse_vector(env, input);
+        let (remaining, value) = result.expect("should parse empty vector with comma and space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_vector().expect("should be a vector");
+        assert!(items.is_empty(), "vector should be empty");
+    }
+
+    #[test]
+    fn empty_vector_with_space_comma() {
+        let env = Environment::new_empty_rc();
+        let input = "[ ,]";
+        let result = parse::try_parse_vector(env, input);
+        let (remaining, value) = result.expect("should parse empty vector with space and comma");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_vector().expect("should be a vector");
+        assert!(items.is_empty(), "vector should be empty");
+    }
+
+    #[test]
+    fn empty_vector_with_space_comma_space() {
+        let env = Environment::new_empty_rc();
+        let input = "[ , ]";
+        let result = parse::try_parse_vector(env, input);
+        let (remaining, value) = result.expect("should parse empty vector with space, comma, and space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_vector().expect("should be a vector");
+        assert!(items.is_empty(), "vector should be empty");
+    }
+
+    // Empty set tests
+    #[test]
+    fn empty_set() {
+        let env = Environment::new_empty_rc();
+        let input = "#{}";
+        let result = parse::try_parse_set(env, input);
+        let (remaining, value) = result.expect("should parse empty set");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_set().expect("should be a set");
+        assert!(items.is_empty(), "set should be empty");
+    }
+
+    #[test]
+    fn empty_set_with_space() {
+        let env = Environment::new_empty_rc();
+        let input = "#{ }";
+        let result = parse::try_parse_set(env, input);
+        let (remaining, value) = result.expect("should parse empty set with space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_set().expect("should be a set");
+        assert!(items.is_empty(), "set should be empty");
+    }
+
+    #[test]
+    fn empty_set_with_comma() {
+        let env = Environment::new_empty_rc();
+        let input = "#{,}";
+        let result = parse::try_parse_set(env, input);
+        let (remaining, value) = result.expect("should parse empty set with comma");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_set().expect("should be a set");
+        assert!(items.is_empty(), "set should be empty");
+    }
+
+    #[test]
+    fn empty_set_with_comma_space() {
+        let env = Environment::new_empty_rc();
+        let input = "#{, }";
+        let result = parse::try_parse_set(env, input);
+        let (remaining, value) = result.expect("should parse empty set with comma and space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_set().expect("should be a set");
+        assert!(items.is_empty(), "set should be empty");
+    }
+
+    #[test]
+    fn empty_set_with_space_comma() {
+        let env = Environment::new_empty_rc();
+        let input = "#{ ,}";
+        let result = parse::try_parse_set(env, input);
+        let (remaining, value) = result.expect("should parse empty set with space and comma");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_set().expect("should be a set");
+        assert!(items.is_empty(), "set should be empty");
+    }
+
+    #[test]
+    fn empty_set_with_space_comma_space() {
+        let env = Environment::new_empty_rc();
+        let input = "#{ , }";
+        let result = parse::try_parse_set(env, input);
+        let (remaining, value) = result.expect("should parse empty set with space, comma, and space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_set().expect("should be a set");
+        assert!(items.is_empty(), "set should be empty");
+    }
+
+    // Empty map tests
+    #[test]
+    fn empty_map() {
+        let env = Environment::new_empty_rc();
+        let input = "{}";
+        let result = parse::try_parse_map(env, input);
+        let (remaining, value) = result.expect("should parse empty map");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_map().expect("should be a map");
+        assert!(items.is_empty(), "map should be empty");
+    }
+
+    #[test]
+    fn empty_map_with_space() {
+        let env = Environment::new_empty_rc();
+        let input = "{ }";
+        let result = parse::try_parse_map(env, input);
+        let (remaining, value) = result.expect("should parse empty map with space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_map().expect("should be a map");
+        assert!(items.is_empty(), "map should be empty");
+    }
+
+    #[test]
+    fn empty_map_with_comma() {
+        let env = Environment::new_empty_rc();
+        let input = "{,}";
+        let result = parse::try_parse_map(env, input);
+        let (remaining, value) = result.expect("should parse empty map with comma");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_map().expect("should be a map");
+        assert!(items.is_empty(), "map should be empty");
+    }
+
+    #[test]
+    fn empty_map_with_comma_space() {
+        let env = Environment::new_empty_rc();
+        let input = "{, }";
+        let result = parse::try_parse_map(env, input);
+        let (remaining, value) = result.expect("should parse empty map with comma and space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_map().expect("should be a map");
+        assert!(items.is_empty(), "map should be empty");
+    }
+
+    #[test]
+    fn empty_map_with_space_comma() {
+        let env = Environment::new_empty_rc();
+        let input = "{ ,}";
+        let result = parse::try_parse_map(env, input);
+        let (remaining, value) = result.expect("should parse empty map with space and comma");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_map().expect("should be a map");
+        assert!(items.is_empty(), "map should be empty");
+    }
+
+    #[test]
+    fn empty_map_with_space_comma_space() {
+        let env = Environment::new_empty_rc();
+        let input = "{ , }";
+        let result = parse::try_parse_map(env, input);
+        let (remaining, value) = result.expect("should parse empty map with space, comma, and space");
+        assert!(remaining.is_empty());
+        let (items, _meta) = value.try_as_map().expect("should be a map");
+        assert!(items.is_empty(), "map should be empty");
+    }
+
+    // Tests for parsing keywords followed by collections
+    #[test]
+    fn keyword_followed_by_list() {
+        let env = Environment::new_empty_rc();
+        let input = ":foo(bar)";
+        let result = parse::try_parse_keyword(env.clone(), input);
+        let (remaining, value) = result.expect("should parse keyword");
+        assert_eq!(remaining, "(bar)");
+        let (keyword, _meta) = value.try_as_keyword().expect("should be a keyword");
+        assert!(keyword.is_unqualified(), "keyword should be unqualified");
+        assert_eq!(keyword.name(), "foo");
+
+        // Parse the remaining list
+        let list_result = parse::try_parse_list(env, remaining);
+        let (list_remaining, list_value) = list_result.expect("should parse list");
+        assert!(list_remaining.is_empty());
+        let (items, _meta) = list_value.try_as_list().expect("should be a list");
+        assert_eq!(items.len(), 1, "list should contain one item");
+        let item = items.first().unwrap();
+        let (symbol, _meta) = item.try_as_symbol().expect("item should be a symbol");
+        assert_eq!(symbol.name(), "bar");
+    }
+
+    #[test]
+    fn keyword_followed_by_vector() {
+        let env = Environment::new_empty_rc();
+        let input = ":foo[bar]";
+        let result = parse::try_parse_keyword(env.clone(), input);
+        let (remaining, value) = result.expect("should parse keyword");
+        assert_eq!(remaining, "[bar]");
+        let (keyword, _meta) = value.try_as_keyword().expect("should be a keyword");
+        assert!(keyword.is_unqualified(), "keyword should be unqualified");
+        assert_eq!(keyword.name(), "foo");
+
+        // Parse the remaining vector
+        let vector_result = parse::try_parse_vector(env, remaining);
+        let (vector_remaining, vector_value) = vector_result.expect("should parse vector");
+        assert!(vector_remaining.is_empty());
+        let (items, _meta) = vector_value.try_as_vector().expect("should be a vector");
+        assert_eq!(items.len(), 1, "vector should contain one item");
+        let item = items.first().unwrap();
+        let (symbol, _meta) = item.try_as_symbol().expect("item should be a symbol");
+        assert_eq!(symbol.name(), "bar");
+    }
+
+    #[test]
+    fn symbol_followed_by_vector() {
+        let env = Environment::new_empty_rc();
+        let input = "foo[bar]";
+        let result = parse::try_parse_symbol(env.clone(), input);
+        let (remaining, value) = result.expect("should parse symbol");
+        assert_eq!(remaining, "[bar]");
+        let (symbol, _meta) = value.try_as_symbol().expect("should be a symbol");
+        assert!(symbol.is_unqualified(), "symbol should be unqualified");
+        assert_eq!(symbol.name(), "foo");
+
+        // Parse the remaining vector
+        let vector_result = parse::try_parse_vector(env, remaining);
+        let (vector_remaining, vector_value) = vector_result.expect("should parse vector");
+        assert!(vector_remaining.is_empty());
+        let (items, _meta) = vector_value.try_as_vector().expect("should be a vector");
+        assert_eq!(items.len(), 1, "vector should contain one item");
+        let item = items.first().unwrap();
+        let (symbol, _meta) = item.try_as_symbol().expect("item should be a symbol");
+        assert_eq!(symbol.name(), "bar");
+    }
+
+    #[test]
+    fn symbol_followed_by_list() {
+        let env = Environment::new_empty_rc();
+        let input = "foo(bar)";
+        let result = parse::try_parse_symbol(env.clone(), input);
+        let (remaining, value) = result.expect("should parse symbol");
+        assert_eq!(remaining, "(bar)");
+        let (symbol, _meta) = value.try_as_symbol().expect("should be a symbol");
+        assert!(symbol.is_unqualified(), "symbol should be unqualified");
+        assert_eq!(symbol.name(), "foo");
+
+        // Parse the remaining list
+        let list_result = parse::try_parse_list(env, remaining);
+        let (list_remaining, list_value) = list_result.expect("should parse list");
+        assert!(list_remaining.is_empty());
+        let (items, _meta) = list_value.try_as_list().expect("should be a list");
+        assert_eq!(items.len(), 1, "list should contain one item");
+        let item = items.first().unwrap();
+        let (symbol, _meta) = item.try_as_symbol().expect("item should be a symbol");
+        assert_eq!(symbol.name(), "bar");
     }
 }

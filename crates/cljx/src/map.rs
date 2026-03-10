@@ -1,116 +1,85 @@
 use core::fmt;
-use std::{ops, rc::Rc};
-
+use std::rc::Rc;
 use itertools::Itertools as _;
-
 use crate::{RcValue, Value};
-
 
 pub type RcMap = Rc<Map>;
 
 #[derive(Hash, Ord, PartialOrd, PartialEq, Eq)]
 #[derive(Clone)]
-pub struct Map(Vec<(RcValue, RcValue)>);
+pub struct Map(im::OrdMap<RcValue, RcValue>);
 
 impl Map {
     pub fn new_empty() -> Self {
-        Self(Vec::new())
+        Self(im::OrdMap::new())
     }
 
     pub fn new_empty_value() -> Value {
-        Value::map(Self(Vec::new()))
+        Value::map(Self(im::OrdMap::new()))
     }
 
     pub fn new_empty_value_rc() -> RcValue {
-        Value::map_rc(Self(Vec::new()))
+        Value::map_rc(Self(im::OrdMap::new()))
     }
 
     pub fn new(entries: Vec<(RcValue, RcValue)>) -> Self {
-        Self(entries)
+        let mut map = im::OrdMap::new();
+        for (key, value) in entries {
+            map.insert(key, value);
+        }
+        Self(map)
     }
 
     pub fn new_value(entries: Vec<(RcValue, RcValue)>) -> Value {
-        Value::map(Self(entries))
+        Value::map(Self::new(entries))
     }
 
     pub fn new_value_rc(entries: Vec<(RcValue, RcValue)>) -> RcValue {
-        Value::map_rc(Self(entries))
+        Value::map_rc(Self::new(entries))
     }
 
     pub fn insert(&mut self, key: RcValue, value: RcValue) {
-        // replace existing entry if key exists
-        for (k, v) in self.0.iter_mut() {
-            if RcValue::ptr_eq(k, &key) || *k == key {
-                *v = value;
-                return;
-            }
-        }
-
-        // otherwise, add new entry
-        self.0.push((key, value));
+        self.0.insert(key, value);
     }
 
     pub fn get(&self, key: &RcValue) -> Option<RcValue> {
-        for (k, v) in self.0.iter() {
-            if RcValue::ptr_eq(k, key) || *k == *key {
-                return Some(v.to_owned());
-            }
-        }
-        None
+        self.0.get(key).cloned()
     }
 
     pub fn get_or(&self, key: &RcValue, or: RcValue) -> RcValue {
-        for (k, v) in self.0.iter() {
-            if RcValue::ptr_eq(k, key) || *k == *key {
-                return v.to_owned();
-            }
-        }
-        or
+        self.0.get(key).cloned().unwrap_or(or)
     }
 
     pub fn get_or_nil(&self, key: &RcValue) -> RcValue {
-        for (k, v) in self.0.iter() {
-            if RcValue::ptr_eq(k, key) || *k == *key {
-                return v.to_owned();
-            }
-        }
-        Value::nil_rc()
+        self.0.get(key).cloned().unwrap_or(Value::nil_rc())
     }
 
-    pub fn get_panicing(&self, key: &RcValue) -> RcValue {
-        for (k, v) in self.0.iter() {
-            if RcValue::ptr_eq(k, key) || *k == *key {
-                return v.to_owned();
-            }
-        }
-        panic!("Key not found in Map: {}", key);
+    pub fn get_or_panic(&self, key: &RcValue) -> RcValue {
+        self.0.get(key).cloned().unwrap_or_else(|| panic!("Key not found in Map: {}", key))
     }
 
     pub fn keys(&self) -> Vec<RcValue> {
-        self.0.iter().map(|(k, _v)| k.to_owned()).collect()
+        self.0.iter().map(|(k, _v)| (*k).clone()).collect()
     }
 
     pub fn values(&self) -> Vec<RcValue> {
-        self.0.iter().map(|(_k, v)| v.to_owned()).collect()
+        self.0.iter().map(|(_k, v)| (*v).clone()).collect()
     }
 
     pub fn contains_key(&self, key: &RcValue) -> bool {
-        for (k, _v) in self.0.iter() {
-            if RcValue::ptr_eq(k, key) || *k == *key {
-                return true;
-            }
-        }
-        false
+        self.0.contains_key(key)
     }
 
     pub fn remove(&mut self, key: &RcValue) -> Option<RcValue> {
-        let idx = self.0.iter().position(|(k, _v)| RcValue::ptr_eq(k, key) || *k == *key);
-        if let Some(idx) = idx {
-            let (_k, v) = self.0.swap_remove(idx);
-            Some(v)
-        } else {
-            None
-        }
+        self.0.remove(key)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
     pub fn into_value(self) -> Value {
@@ -120,18 +89,9 @@ impl Map {
     pub fn into_value_rc(self) -> RcValue {
         Value::map_rc(self)
     }
-}
 
-impl ops::Deref for Map {
-    type Target = Vec<(RcValue, RcValue)>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl ops::DerefMut for Map {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    pub fn iter(&self) -> impl Iterator<Item = (&RcValue, &RcValue)> {
+        self.0.iter()
     }
 }
 
@@ -259,12 +219,12 @@ mod tests {
     }
 
     #[test]
-    fn get_panicing_panics_on_missing_key() {
+    fn get_or_panic_panics_on_missing_key() {
         let map = Map::new(vec![
             (Value::keyword_unqualified_rc("a"), Value::integer_rc(1)),
         ]);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = map.get_panicing(&Value::keyword_unqualified_rc("b"));
+            let _ = map.get_or_panic(&Value::keyword_unqualified_rc("b"));
         }));
         assert!(result.is_err());
     }

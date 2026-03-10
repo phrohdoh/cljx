@@ -1,35 +1,39 @@
 use core::fmt;
-use std::{ops, rc::Rc};
+use std::rc::Rc;
 use itertools::Itertools;
 use crate::{Value, RcValue};
 
 #[derive(Hash, Ord, PartialOrd, PartialEq, Eq)]
 #[derive(Clone)]
-pub struct Vector(Vec<RcValue>);
+pub struct Vector(im::Vector<RcValue>);
 
 impl Vector {
     pub fn new_empty() -> Self {
-        Self(Vec::new())
+        Self(im::Vector::new())
     }
 
     pub fn new_empty_value() -> Value {
-        Value::vector(Self(Vec::new()))
+        Value::vector(Self(im::Vector::new()))
     }
 
     pub fn new_empty_value_rc() -> RcValue {
-        Value::vector_rc(Self(Vec::new()))
+        Value::vector_rc(Self(im::Vector::new()))
     }
 
     pub fn new(elements: Vec<RcValue>) -> Self {
-        Self(elements)
+        let mut vector = im::Vector::new();
+        for elem in elements {
+            vector.push_back(elem);
+        }
+        Self(vector)
     }
 
     pub fn new_value(elements: Vec<RcValue>) -> Value {
-        Value::vector(Self(elements))
+        Value::vector(Self::new(elements))
     }
 
     pub fn new_value_rc(elements: Vec<RcValue>) -> RcValue {
-        Value::vector_rc(Self(elements))
+        Value::vector_rc(Self::new(elements))
     }
 
     pub fn into_value(self) -> Value {
@@ -45,10 +49,18 @@ impl Vector {
     }
 
     pub fn push_back(&mut self, value: RcValue) {
-        self.0.push(value);
+        self.0.push_back(value);
     }
 
-    pub fn get_nth_panicing(&self, n: usize) -> RcValue {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn get_nth_or_panic(&self, n: usize) -> RcValue {
         self.0.get(n).map(|v| v.to_owned()).unwrap()
     }
 
@@ -59,18 +71,21 @@ impl Vector {
     pub fn get_nth_or(&self, n: usize, or: RcValue) -> RcValue {
         self.0.get(n).map(|v| v.to_owned()).unwrap_or(or)
     }
-}
 
-impl ops::Deref for Vector {
-    type Target = Vec<RcValue>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn iter(&self) -> impl Iterator<Item = &RcValue> {
+        self.0.iter()
     }
-}
 
-impl ops::DerefMut for Vector {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    pub fn first(&self) -> Option<&RcValue> {
+        self.0.front()
+    }
+
+    pub fn second(&self) -> Option<&RcValue> {
+        self.0.get(1)
+    }
+
+    pub fn last(&self) -> Option<&RcValue> {
+        self.0.back()
     }
 }
 
@@ -117,13 +132,14 @@ mod tests {
         vector.push_back(Value::integer_rc(2));
         vector.push_back(Value::integer_rc(3));
         assert_eq!(vector.len(), 3);
-        assert_eq!(*vector[0], Value::integer(1));
-        assert_eq!(*vector[1], Value::integer(2));
-        assert_eq!(*vector[2], Value::integer(3));
+        let mut iter = vector.0.iter();
+        assert_eq!(**iter.next().unwrap(), Value::integer(1));
+        assert_eq!(**iter.next().unwrap(), Value::integer(2));
+        assert_eq!(**iter.next().unwrap(), Value::integer(3));
     }
 
     #[test]
-    fn get_nth_panicing_given_index_in_bounds() {
+    fn get_nth_or_panic_given_index_in_bounds() {
         // arrange
         let vector = Vector::new(vec![
             /* 0 */ Value::integer_rc(3),
@@ -131,14 +147,14 @@ mod tests {
             /* 2 */ Value::integer_rc(9),
         ]);
         // act
-        let nth_1 = vector.get_nth_panicing(1);
+        let nth_1 = vector.get_nth_or_panic(1);
         // assert
         assert_eq!(*nth_1, Value::integer(7));
     }
 
     #[test]
     #[should_panic]
-    fn get_nth_panicing_given_index_out_of_bounds_panics() {
+    fn get_nth_or_panic_given_index_out_of_bounds_panics() {
         for (index, vector) in vec![
             (0, Vector::new_empty()),
             (10, Vector::new_empty()),
@@ -146,7 +162,7 @@ mod tests {
                 Rc::new(Value::nil()),
             ])),
         ] {
-            let _ = vector.get_nth_panicing(index);
+            let _ = vector.get_nth_or_panic(index);
         }
     }
 
@@ -193,7 +209,8 @@ mod tests {
             Value::integer_rc(3),
         ]);
         assert_eq!(vector.len(), 3);
-        assert_eq!(*vector[0], Value::integer(1));
+        let mut iter = vector.0.iter();
+        assert_eq!(**iter.next().unwrap(), Value::integer(1));
     }
 
     #[test]
@@ -216,7 +233,8 @@ mod tests {
         assert!(val.is_vector());
         if let crate::Value::Vector(v, _) = val {
             assert_eq!(v.len(), 2);
-            assert_eq!(*v[0], Value::integer(10));
+            let mut iter = v.0.iter();
+            assert_eq!(**iter.next().unwrap(), Value::integer(10));
         } else {
             panic!("Expected Vector variant");
         }
@@ -241,9 +259,10 @@ mod tests {
         vector.push_back(Value::integer_rc(2));
         vector.push_back(Value::integer_rc(3));
         // insertion order should be preserved: 1, 2, 3
-        assert_eq!(*vector[0], Value::integer(1));
-        assert_eq!(*vector[1], Value::integer(2));
-        assert_eq!(*vector[2], Value::integer(3));
+        let mut iter = vector.0.iter();
+        assert_eq!(**iter.next().unwrap(), Value::integer(1));
+        assert_eq!(**iter.next().unwrap(), Value::integer(2));
+        assert_eq!(**iter.next().unwrap(), Value::integer(3));
     }
 
     #[test]
@@ -253,11 +272,12 @@ mod tests {
             vector.push_back(Value::integer_rc(i));
         }
         // Order should be: 1, 2, 3, 4, 5
-        assert_eq!(*vector[0], Value::integer(1));
-        assert_eq!(*vector[1], Value::integer(2));
-        assert_eq!(*vector[2], Value::integer(3));
-        assert_eq!(*vector[3], Value::integer(4));
-        assert_eq!(*vector[4], Value::integer(5));
+        let mut iter = vector.0.iter();
+        assert_eq!(**iter.next().unwrap(), Value::integer(1));
+        assert_eq!(**iter.next().unwrap(), Value::integer(2));
+        assert_eq!(**iter.next().unwrap(), Value::integer(3));
+        assert_eq!(**iter.next().unwrap(), Value::integer(4));
+        assert_eq!(**iter.next().unwrap(), Value::integer(5));
     }
 
     #[test]

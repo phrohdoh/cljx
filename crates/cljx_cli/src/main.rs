@@ -163,8 +163,8 @@ fn eval(
         Value::String(_, _meta) => v.clone(),
         Value::List(list, _meta) => {
             if list.is_empty() { return v; }
-            let args: Vec<RcValue> = list[1..].iter().map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect();
-            let v = eval_func.invoke(env.clone(), vec![list.first().cloned().unwrap()]);
+            let args: Vec<RcValue> = list.iter().skip(1).map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect();
+            let v = eval_func.invoke(env.clone(), vec![list.first().unwrap().to_owned()]);
             apply_func.invoke(env.clone(), {
                 let mut apply_args = args;
                 apply_args.insert(0, v);
@@ -179,44 +179,6 @@ fn eval(
         Value::Handle(_, _meta) => v.clone(),
     }
 }
-
-//#[tracing::instrument(ret, fields(env, v), level = "info")]
-//fn eval_v1(
-//    env: RcEnv,
-//    v: RcValue,
-//) -> RcValue {
-//    match v.as_ref() {
-//        Value::Nil(_meta) => v.clone(),
-//        Value::Symbol(Symbol::Unqualified(symbol), _meta) => env
-//            .get_var_in_self_or_ancestors(symbol)
-//            .and_then(|var| var.deref())
-//            .expect(&format!("binding not found: {symbol}")),
-//        Value::Symbol(Symbol::Qualified(_symbol), _meta) => {
-//            todo!("eval qualified symbol")
-//        },
-//        //Value::Symbol(Symbol::Qualified(symbol), _meta) => env
-//        //    .get_var_in_self_or_ancestors(&SymbolUnqualified::new(symbol.name().to_owned()))
-//        //    .and_then(|var| var.deref())
-//        //    .expect(&format!("binding not found: {symbol}")),
-//        Value::Keyword(_, _meta) => v.clone(),
-//        Value::Boolean(_, _meta) => v.clone(),
-//        Value::Integer(_, _meta) => v.clone(),
-//        Value::Float(_, _meta) => v.clone(),
-//        Value::String(_, _meta) => v.clone(),
-//        Value::List(list, _meta) => {
-//            if list.is_empty() { return v; }
-//            let args: Vec<RcValue> = list[1..].iter().map(|value| eval(env.clone(), value.to_owned())).collect();
-//            let v = eval(env.clone(), list.first().cloned().unwrap());
-//            apply(env.clone(), v, args)
-//        },
-//        Value::Vector(vector, _meta) => Value::new_vector_rc(vector.iter().map(|value| eval(env.clone(), value.to_owned())).collect()),
-//        Value::Set(set, _meta) => Value::new_set_rc(set.iter().map(|value| eval(env.clone(), value.to_owned())).collect()),
-//        Value::Map(map, _meta) => Value::new_map_rc(map.iter().map(|(k, v)| (eval(env.clone(), k.to_owned()), eval(env.clone(), v.to_owned()))).collect()),
-//        Value::Var(var, _meta) => var.deref().expect("attempted to deref unbound Var"),
-//        Value::Function(_, _meta) => v.clone(),
-//        Value::Handle(_, _meta) => v.clone(),
-//    }
-//}
 
 #[tracing::instrument(ret, fields(env, f, args), level = "info")]
 fn apply(
@@ -408,6 +370,14 @@ fn create_env() -> RcEnv {
         )],
     );
 
+    clojure_core.build_and_bind_function(
+        "list",
+        vec![(
+            FunctionArity::AtLeast(0),
+            Box::new(|_: RcEnv, args: Vec<RcValue>| Value::new_list_rc(args)),
+        )],
+    );
+
     // TODO: clojure.core/declare macro
     /*
     clojure_core.build_and_bind_function(
@@ -547,6 +517,51 @@ fn create_env() -> RcEnv {
             Box::new(|_env: RcEnv, args: Vec<RcValue>| {
                 let Value::Map(m, _) = args[0].as_ref() else { unimplemented!() };
                 List::new_value_rc(m.values())
+            }),
+        )],
+    );
+
+    // (clojure.core/first coll)
+    clojure_core.build_and_bind_function(
+        "first",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnv, args: Vec<RcValue>| {
+                match args[0].as_ref() {
+                    Value::List(list, _meta) => list.first().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
+                    Value::Vector(vector, _meta) => vector.first().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
+                    _ => panic!("first expects a list or vector, but got: {:?}", args[0]),
+                }
+            }),
+        )],
+    );
+
+    // (clojure.core/second coll)
+    clojure_core.build_and_bind_function(
+        "second",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnv, args: Vec<RcValue>| {
+                match args[0].as_ref() {
+                    Value::List(list, _meta) => list.second().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
+                    Value::Vector(vector, _meta) => vector.second().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
+                    _ => panic!("second expects a list or vector, but got: {:?}", args[0]),
+                }
+            }),
+        )],
+    );
+
+    // (clojure.core/last coll)
+    clojure_core.build_and_bind_function(
+        "last",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnv, args: Vec<RcValue>| {
+                match args[0].as_ref() {
+                    Value::List(list, _meta) => list.last().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
+                    Value::Vector(vector, _meta) => vector.last().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
+                    _ => panic!("last expects a list or vector, but got: {:?}", args[0]),
+                }
             }),
         )],
     );

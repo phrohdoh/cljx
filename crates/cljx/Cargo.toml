@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 as-any = "0.3.2"
+im = "15.1.0"
 itertools = "0.14.0"
 opentelemetry = "0.31.0"
 opentelemetry-otlp = "0.31.0"

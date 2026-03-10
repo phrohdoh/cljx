@@ -1,107 +1,82 @@
 use core::fmt;
-use std::ops;
-
 use itertools::Itertools as _;
-
 use crate::{RcValue, Value};
-
 
 #[derive(Hash, Ord, PartialOrd, PartialEq, Eq)]
 #[derive(Clone)]
-pub struct Set(Vec<RcValue>);
+pub struct Set(im::OrdSet<RcValue>);
 
 impl Set {
     pub fn new_empty() -> Self {
-        Self(Vec::new())
+        Self(im::OrdSet::new())
     }
 
     pub fn new_empty_value() -> Value {
-        Value::set(Self(Vec::new()))
+        Value::set(Self(im::OrdSet::new()))
     }
 
     pub fn new_empty_value_rc() -> RcValue {
-        Value::set_rc(Self(Vec::new()))
+        Value::set_rc(Self(im::OrdSet::new()))
     }
 
     pub fn new(elements: Vec<RcValue>) -> Self {
-        Self(elements)
+        let mut set = im::OrdSet::new();
+        for elem in elements {
+            set.insert(elem);
+        }
+        Self(set)
     }
 
     pub fn new_value(elements: Vec<RcValue>) -> Value {
-        Value::set(Self(elements))
+        Value::set(Self::new(elements))
     }
 
     pub fn new_value_rc(elements: Vec<RcValue>) -> RcValue {
-        Value::set_rc(Self(elements))
+        Value::set_rc(Self::new(elements))
     }
 
     pub fn insert(&mut self, value: RcValue) {
-        // avoid duplicates
-        for v in self.0.iter() {
-            if RcValue::ptr_eq(v, &value) || *v == value {
-                return;
-            }
-        }
-        self.0.push(value);
+        self.0.insert(value);
     }
 
     pub fn get(&self, value: &RcValue) -> Option<RcValue> {
-        for value_in_set in self.0.iter() {
-            if RcValue::ptr_eq(value_in_set, value) || *value_in_set == *value {
-                return Some(value_in_set.to_owned());
-            }
-        }
-        None
+        self.0.iter().find(|v| RcValue::ptr_eq(v, value) || *v == value).cloned()
     }
 
     pub fn get_or(&self, value: &RcValue, or: RcValue) -> RcValue {
-        for value_in_set in self.0.iter() {
-            if RcValue::ptr_eq(value_in_set, value) || *value_in_set == *value {
-                return value_in_set.to_owned();
-            }
-        }
-        or
+        self.0.iter().find(|v| RcValue::ptr_eq(v, value) || *v == value).cloned().unwrap_or(or)
     }
 
     pub fn get_or_nil(&self, value: &RcValue) -> RcValue {
-        for value_in_set in self.0.iter() {
-            if RcValue::ptr_eq(value_in_set, value) || *value_in_set == *value {
-                return value_in_set.to_owned();
-            }
-        }
-        Value::nil_rc()
+        self.0.iter().find(|v| RcValue::ptr_eq(v, value) || *v == value).cloned().unwrap_or(Value::nil_rc())
     }
 
-    pub fn get_panicing(&self, value: &RcValue) -> RcValue {
-        for value_in_set in self.0.iter() {
-            if RcValue::ptr_eq(value_in_set, value) || *value_in_set == *value {
-                return value_in_set.to_owned();
-            }
-        }
-        panic!("Key not found in Set: {}", value);
+    pub fn get_or_panic(&self, value: &RcValue) -> RcValue {
+        self.0.iter().find(|v| RcValue::ptr_eq(v, value) || *v == value).cloned().unwrap_or_else(|| panic!("Key not found in Set: {}", value))
     }
 
     pub fn values(&self) -> Vec<RcValue> {
-        self.0.iter().map(|v| v.to_owned()).collect()
+        self.0.iter().map(|v| (*v).clone()).collect()
     }
 
     pub fn contains(&self, value: &RcValue) -> bool {
-        for value_in_set in self.0.iter() {
-            if RcValue::ptr_eq(value_in_set, value) || *value_in_set == *value {
-                return true;
-            }
-        }
-        false
+        self.0.contains(value)
     }
 
     pub fn remove(&mut self, value: &RcValue) -> Option<RcValue> {
-        let idx = self.0.iter().position(|value_in_set| RcValue::ptr_eq(value_in_set, value) || *value_in_set == *value);
-        if let Some(idx) = idx {
-            let value_in_set = self.0.swap_remove(idx);
-            Some(value_in_set)
-        } else {
-            None
-        }
+        self.0.remove(value)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &RcValue> {
+        self.0.iter()
     }
 
     pub fn into_value(self) -> Value {
@@ -110,19 +85,6 @@ impl Set {
 
     pub fn into_value_rc(self) -> RcValue {
         Value::set_rc(self)
-    }
-}
-
-impl ops::Deref for Set {
-    type Target = Vec<RcValue>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl ops::DerefMut for Set {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
 
@@ -241,10 +203,10 @@ mod tests {
     }
 
     #[test]
-    fn get_panicing_panics_on_missing_value() {
+    fn get_or_panic_panics_on_missing_value() {
         let set = Set::new(vec![Value::integer_rc(42)]);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = set.get_panicing(&Value::integer_rc(99));
+            let _ = set.get_or_panic(&Value::integer_rc(99));
         }));
         assert!(result.is_err());
     }
