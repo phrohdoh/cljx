@@ -837,7 +837,7 @@ pub mod parse {
 
     #[tracing::instrument(fields(input), ret, level = "info")]
     pub fn try_parse_symbol(env: RcEnv, input: &'_ str) -> ParseResult<'_> {
-        let symbol_charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*_+-=~:[]{}<>./";
+        let symbol_charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*_+-=~:[]{}<>.";
         let build_symbol_chars = || recognize(many1(one_of(symbol_charset)));
 
         // Try to parse a qualified symbol (namespace/name), falling back to unqualified
