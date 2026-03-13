@@ -3,6 +3,8 @@ use std::rc::Rc;
 use itertools::Itertools;
 use crate::{Value, RcValue};
 
+pub mod optics;
+
 #[derive(Hash, Ord, PartialOrd, PartialEq, Eq)]
 #[derive(Clone)]
 pub struct List(im::Vector<RcValue>);

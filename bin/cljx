@@ -298,6 +298,13 @@ flows:
     # Purpose of `${{ ctx.script_name }} repl`:
     Enter into a Read-Eval-Print Loop (REPL) for interactive evaluation of source code (EDN/CLJ forms).
 
+- id: optics
+  if: |-
+    (-> *command-line-args* (some-> first) (->> (contains? #{"optics"})))
+  shell_cmd: ${{ spec.crates.cljx_cli.run_shell_cmd }} optics
+  forward_args: true
+  forward_args_skip: 1
+
 EOF
 
 println "${builtin_spec_yaml}"

@@ -1,6 +1,6 @@
 use core::fmt;
 use std::{cell::{RefCell, RefMut}, env, io::{self, Stdin}, rc::Rc};
-use cljx::{BufReadHandle, Environment, Function, FunctionArity, GetValueError, GetVarError, Handle, IFunction as _, IHandle, List, Map, Namespace, RcEnvironment as RcEnv, RcNamespace, RcValue, RcVar, Symbol, SymbolQualified, SymbolUnqualified, Value, WriteHandle, read_one, read_one_v2};
+use cljx::{BufReadHandle, Environment, Function, FunctionArity, GetValueError, GetVarError, Handle, IFunction as _, IHandle, List, Map, Namespace, RcEnvironment as RcEnv, RcNamespace, RcValue, RcVar, Symbol, SymbolQualified, SymbolUnqualified, Value, WriteHandle, list_optics, read_one, read_one_v2, value_optics};
 // use rustyline::{DefaultEditor, error::ReadlineError};
 
 use opentelemetry::{global, trace::TracerProvider as _};
@@ -78,6 +78,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>>
             eval_string(&bin_call, args.into_iter().skip(1).collect::<Vec<_>>());
         } else if first == "eval-file" {
             eval_file(&bin_call, args.into_iter().skip(1).collect::<Vec<_>>());
+        } else if first == "optics" {
+            demo_optics(&bin_call, args.into_iter().skip(1).collect::<Vec<_>>());
         } else {
             todo!("{:?}", first)
         }
@@ -528,9 +530,9 @@ fn create_env() -> RcEnv {
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnv, args: Vec<RcValue>| {
                 match args[0].as_ref() {
-                    Value::List(list, _meta) => list.first().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
-                    Value::Vector(vector, _meta) => vector.first().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
-                    _ => panic!("first expects a list or vector, but got: {:?}", args[0]),
+                    Value::List(list, _meta) => list.first().cloned().unwrap_or(Value::nil_rc()),
+                    Value::Vector(vec, _meta) => vec.first().cloned().unwrap_or(Value::nil_rc()),
+                    _ => Value::nil_rc(),
                 }
             }),
         )],
@@ -543,9 +545,9 @@ fn create_env() -> RcEnv {
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnv, args: Vec<RcValue>| {
                 match args[0].as_ref() {
-                    Value::List(list, _meta) => list.second().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
-                    Value::Vector(vector, _meta) => vector.second().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
-                    _ => panic!("second expects a list or vector, but got: {:?}", args[0]),
+                    Value::List(list, _meta) => list.second().cloned().unwrap_or(Value::nil_rc()),
+                    Value::Vector(vec, _meta) => vec.second().cloned().unwrap_or(Value::nil_rc()),
+                    _ => Value::nil_rc(),
                 }
             }),
         )],
@@ -558,9 +560,9 @@ fn create_env() -> RcEnv {
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnv, args: Vec<RcValue>| {
                 match args[0].as_ref() {
-                    Value::List(list, _meta) => list.last().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
-                    Value::Vector(vector, _meta) => vector.last().map(|v| v.to_owned()).unwrap_or(Value::nil_rc()),
-                    _ => panic!("last expects a list or vector, but got: {:?}", args[0]),
+                    Value::List(list, _meta) => list.last().cloned().unwrap_or(Value::nil_rc()),
+                    Value::Vector(vec, _meta) => vec.last().cloned().unwrap_or(Value::nil_rc()),
+                    _ => Value::nil_rc(),
                 }
             }),
         )],
@@ -639,6 +641,20 @@ fn eval_file(bin_call: &str, args: Vec<String>) {
     env.get_namespace_or_panic("clojure.core")
        .get_function_or_panic("prn")
        .invoke(env.clone(), vec![last_result]);
+}
+
+#[tracing::instrument(ret, fields(bin_call, args), level = "info")]
+fn demo_optics(
+    _bin_call: &str,
+    _args: Vec<String>,
+) {
+    let env = create_env();
+    let (_, value) = read_one_v2(env, "(:foo :bar (:baz (:qux)))").unwrap();
+    let value = value.unwrap();
+    let first_value = value_optics::view_list_ref(value.as_ref())
+        .and_then(list_optics::view_first)
+        .unwrap_or_else(|| Rc::new(Value::nil()));
+    println!("{}", first_value);
 }
 
 fn bind_stdioe(

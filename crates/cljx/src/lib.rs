@@ -13,12 +13,13 @@ mod meta;
 mod namespace;
 mod environment;
 mod read;
+mod optics;
 
 pub use float::Float;
 pub use symbol::{Symbol, SymbolUnqualified, SymbolQualified};
 pub use keyword::{Keyword, KeywordUnqualified, KeywordQualified};
-pub use list::{List};
-pub use vector::{Vector};
+pub use list::{List, optics as list_optics};
+pub use vector::{Vector, optics as vector_optics};
 pub use set::{Set};
 pub use map::{Map};
 pub use function::{
@@ -35,7 +36,11 @@ pub use function::{
 pub use handle::{Handle, IHandle, WriteHandle, BufReadHandle};
 pub use var::{Var, RcVar};
 pub use meta::{Meta, RcMeta};
-pub use value::{Value, RcValue};
+pub use value::{
+    Value, RcValue,
+    optics as value_optics,
+};
 pub use namespace::{Namespace, RcNamespace, GetVarError, GetValueError, GetFunctionError};
 pub use environment::{Environment, RcEnvironment};
 pub use read::{read_one, read_one_v2, CompleteRead, IncompleteRead, ReadOutput, UnexpectedEndOfInputError, TypeErasedError, ReadError};
+pub use optics::{IPrismOwn, Prism};

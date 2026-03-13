@@ -24,15 +24,7 @@ use crate::{
 };
 
 mod from;
-// mod set;
-// mod map;
-// mod var;
-
-// pub use symbol::{Symbol, SymbolUnqualified, SymbolQualified};
-// pub use keyword::{Keyword, KeywordUnqualified, KeywordQualified};
-// pub use var::Var;
-// pub use set::Set;
-// pub use map::Map;
+pub mod optics;
 
 pub type RcValue = Rc<Value>;
 
@@ -524,3 +516,9 @@ impl fmt::Display for Value {
         }
     }
 }
+
+// =============================================================================
+// Optics for Value
+// =============================================================================
+
+use crate::optics::{IPrismOwn, Prism};
