@@ -1,62 +1,76 @@
-use core::fmt;
 use std::rc::Rc;
 use crate::prelude::*;
 
 // TODO: this probably ought to be a protocol
 
-#[derive(Hash, Ord, PartialOrd, PartialEq, Eq)]
-#[derive(Clone)]
-pub struct Meta(Option<Map>);
-
+/// Meta is now a type alias for Option<Map>, removing the newtype wrapper.
+pub type Meta = Option<Map>;
 
 pub type RcMeta = Rc<Meta>;
 
-
-impl Default for Meta {
-    fn default() -> Self {
-        Self::new_empty()
-    }
+// Helper functions for Meta construction
+#[inline]
+pub fn new_empty() -> Meta {
+    None
 }
 
+#[inline]
+pub fn new_empty_rc() -> RcMeta {
+    Rc::new(None)
+}
 
-impl Meta {
-    pub fn new_empty() -> Self {
-        Self(None)
-    }
+#[inline]
+pub fn new(map: Map) -> Meta {
+    Some(map)
+}
 
-    pub fn new_empty_rc() -> RcMeta {
-        Rc::new(Self(None))
-    }
+#[inline]
+pub fn new_rc(map: Map) -> RcMeta {
+    Rc::new(Some(map))
+}
 
-    pub fn new(map: Map) -> Self {
-        Self(Some(map))
-    }
+#[inline]
+pub fn into_meta_rc(meta: Meta) -> RcMeta {
+    Rc::new(meta)
+}
 
-    pub fn new_rc(map: Map) -> RcMeta {
-        Rc::new(Self(Some(map)))
-    }
+// Helper functions for Meta access
+#[inline]
+pub fn inner_ref(meta: &Meta) -> Option<&Map> {
+    meta.as_ref()
+}
 
-    pub fn into_meta_rc(self) -> RcMeta {
-        Rc::new(self)
-    }
+#[inline]
+pub fn inner(meta: Meta) -> Option<Map> {
+    meta
+}
 
-    /// Generic helper to insert a key-value pair into the Meta map.
+/// Trait for metadata operations on RcMeta.
+/// Provides methods for associating key-value pairs and retrieving values.
+pub trait MetaOps {
+    /// Insert or update a key-value pair in the metadata map.
     /// Returns a new RcMeta with the updated map (doesn't mutate in place).
-    pub fn assoc(
-        &self,
-        key: RcValue,
-        value: RcValue,
-    ) -> RcMeta {
-        match &self.0 {
+    fn assoc(&self, key: RcValue, value: RcValue) -> RcMeta;
+
+    /// Retrieve a value by key from the metadata map.
+    fn get(&self, key: &RcValue) -> Option<RcValue>;
+}
+
+impl MetaOps for RcMeta {
+    fn assoc(&self, key: RcValue, value: RcValue) -> RcMeta {
+        match self.as_ref() {
             None => {
                 // No existing map, create a new one
                 let mut new_map = Map::new_empty();
                 new_map.insert(key, value);
-                Meta::new_rc(new_map)
+                Rc::new(Some(new_map))
             }
             Some(existing_map) => {
                 // Clone existing entries
-                let mut entries: Vec<(RcValue, RcValue)> = existing_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                let mut entries: Vec<(RcValue, RcValue)> = existing_map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
 
                 // Find and update, or insert if not found
                 let mut found = false;
@@ -71,30 +85,20 @@ impl Meta {
                     entries.push((key, value));
                 }
 
-                Self::new_rc(Map::new(entries))
+                Rc::new(Some(Map::new(entries)))
             }
         }
     }
 
-    /// Generic helper to retrieve a value by key from the Meta map.
-    pub fn get(&self, key: &RcValue) -> Option<RcValue> {
-        self.inner_ref().and_then(|map| map.get(key))
-    }
-
-    pub fn inner_ref(&self) -> Option<&Map> {
-        self.0.as_ref()
-    }
-
-    pub fn inner(self) -> Option<Map> {
-        self.0
+    fn get(&self, key: &RcValue) -> Option<RcValue> {
+        self.as_ref().as_ref().and_then(|map| map.get(key))
     }
 }
 
-impl fmt::Display for Meta {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            None => write!(f, "{{}}"),
-            Some(map) => write!(f, "{}", map),
-        }
+// Helper function to format metadata for display
+pub fn display_meta(meta: &RcMeta) -> String {
+    match meta.as_ref() {
+        None => "{}".to_string(),
+        Some(map) => format!("{}", map),
     }
 }

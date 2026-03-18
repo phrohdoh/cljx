@@ -372,10 +372,10 @@ mod v2_tests_inner {
 
         // Verify position information is in the meta
         // The input "hello" starts at line 1, col 1 and ends at line 1, col 6
-        let begin_line_val = Meta::get(&meta_ref, &SourcePosition::begin_line_key());
-        let begin_column_val = Meta::get(&meta_ref, &SourcePosition::begin_column_key());
-        let end_line_val = Meta::get(&meta_ref, &SourcePosition::end_line_key());
-        let end_column_val = Meta::get(&meta_ref, &SourcePosition::end_column_key());
+        let begin_line_val = meta_ref.get(&SourcePosition::begin_line_key());
+        let begin_column_val = meta_ref.get(&SourcePosition::begin_column_key());
+        let end_line_val = meta_ref.get(&SourcePosition::end_line_key());
+        let end_column_val = meta_ref.get(&SourcePosition::end_column_key());
 
         assert!(begin_line_val.is_some(), "begin-line key should be in meta");
         assert!(begin_column_val.is_some(), "begin-column key should be in meta");
@@ -404,7 +404,7 @@ mod v2_tests_inner {
         let meta_ref = meta;
 
         // Verify position information is in the meta
-        let begin_line_val = Meta::get(&meta_ref, &SourcePosition::begin_line_key());
+        let begin_line_val = meta_ref.get(&SourcePosition::begin_line_key());
         assert!(begin_line_val.is_some(), "line key should be in meta");
     }
 

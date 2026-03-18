@@ -55,11 +55,11 @@ pub fn meta_ref(value: &Value) -> &Meta {
 }
 
 pub fn view_meta(value: &Value) -> Option<Map> {
-    meta_ref(value).inner_ref().cloned()
+    meta_ref(value).as_ref().cloned()
 }
 
-pub fn view_meta_ref(value: &Value) -> Option<&Map> {
-    meta_ref(value).inner_ref()
+pub fn view_meta_map_ref(value: &Value) -> Option<&Map> {
+    meta_ref(value).as_ref()
 }
 
 pub fn set_meta(value: &Value, meta: RcMeta) -> RcValue {

@@ -165,11 +165,11 @@ impl Var {
     }
 
     pub fn into_value(var: RcVar) -> Value {
-        Value::Var(var, Meta::default().into_meta_rc())
+        Value::Var(var, meta::new_empty_rc())
     }
 
     pub fn into_value_rc(var: RcVar) -> RcValue {
-        Rc::new(Value::Var(var, Meta::default().into_meta_rc()))
+        Rc::new(Value::Var(var, meta::new_empty_rc()))
     }
 }
 

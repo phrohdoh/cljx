@@ -143,157 +143,157 @@ impl Value {
 
 impl Value {
     pub fn nil() -> Self {
-        Self::Nil(Meta::new_empty_rc())
+        Self::Nil(meta::new_empty_rc())
     }
 
     pub fn boolean(boolean: bool) -> Self {
-        Self::Boolean(boolean, Meta::new_empty_rc())
+        Self::Boolean(boolean, meta::new_empty_rc())
     }
 
     pub fn integer(integer: i64) -> Self {
-        Self::Integer(integer, Meta::new_empty_rc())
+        Self::Integer(integer, meta::new_empty_rc())
     }
 
     pub fn float(float: Float) -> Self {
-        Self::Float(float, Meta::new_empty_rc())
+        Self::Float(float, meta::new_empty_rc())
     }
 
     pub fn string(string: String) -> Self {
-        Self::String(string, Meta::new_empty_rc())
+        Self::String(string, meta::new_empty_rc())
     }
 
     pub fn symbol(symbol: Symbol) -> Self {
-        Self::Symbol(symbol, Meta::new_empty_rc())
+        Self::Symbol(symbol, meta::new_empty_rc())
     }
 
     pub fn symbol_unqualified(name: &str) -> Self {
-        Self::Symbol(Symbol::new_unqualified(name), Meta::new_empty_rc())
+        Self::Symbol(Symbol::new_unqualified(name), meta::new_empty_rc())
     }
 
     pub fn symbol_qualified(namespace: &str, name: &str) -> Self {
-        Self::Symbol(Symbol::new_qualified(namespace, name), Meta::new_empty_rc())
+        Self::Symbol(Symbol::new_qualified(namespace, name), meta::new_empty_rc())
     }
 
     pub fn keyword(keyword: Keyword) -> Self {
-        Self::Keyword(keyword, Meta::new_empty_rc())
+        Self::Keyword(keyword, meta::new_empty_rc())
     }
 
     pub fn keyword_unqualified(name: &str) -> Self {
-        Self::Keyword(Keyword::new_unqualified(name), Meta::new_empty_rc())
+        Self::Keyword(Keyword::new_unqualified(name), meta::new_empty_rc())
     }
 
     pub fn keyword_qualified(namespace: &str, name: &str) -> Self {
-        Self::Keyword(Keyword::new_qualified(namespace, name), Meta::new_empty_rc())
+        Self::Keyword(Keyword::new_qualified(namespace, name), meta::new_empty_rc())
     }
 
     pub fn list(list: List) -> Self {
-        Self::List(list, Meta::new_empty_rc())
+        Self::List(list, meta::new_empty_rc())
     }
 
     pub fn list_from(items: Vec<RcValue>) -> Self {
-        Self::List(List::from(items), Meta::new_empty_rc())
+        Self::List(List::from(items), meta::new_empty_rc())
     }
 
     pub fn vector(vector: Vector) -> Self {
-        Self::Vector(vector, Meta::new_empty_rc())
+        Self::Vector(vector, meta::new_empty_rc())
     }
 
     pub fn vector_from(items: Vec<RcValue>) -> Self {
-        Self::Vector(Vector::from(items), Meta::new_empty_rc())
+        Self::Vector(Vector::from(items), meta::new_empty_rc())
     }
 
     pub fn set(set: Set) -> Self {
-        Self::Set(set, Meta::new_empty_rc())
+        Self::Set(set, meta::new_empty_rc())
     }
 
     pub fn set_from(items: Vec<RcValue>) -> Self {
-        Self::Set(Set::new(items), Meta::new_empty_rc())
+        Self::Set(Set::new(items), meta::new_empty_rc())
     }
 
     pub fn map(map: Map) -> Self {
-        Self::Map(map, Meta::new_empty_rc())
+        Self::Map(map, meta::new_empty_rc())
     }
 
     pub fn map_from(pairs: Vec<(RcValue, RcValue)>) -> Self {
-        Self::Map(Map::new(pairs), Meta::new_empty_rc())
+        Self::Map(Map::new(pairs), meta::new_empty_rc())
     }
 
     pub fn var(var: RcVar) -> Self {
-        Self::Var(var, Meta::new_empty_rc())
+        Self::Var(var, meta::new_empty_rc())
     }
 
     pub fn function(function: RcFunction) -> Self {
-        Self::Function(function, Meta::new_empty_rc())
+        Self::Function(function, meta::new_empty_rc())
     }
 
     pub fn handle(handle: Handle) -> Self {
-        Self::Handle(handle, Meta::new_empty_rc())
+        Self::Handle(handle, meta::new_empty_rc())
     }
 }
 
 impl Value {
     pub fn nil_rc() -> RcValue {
-        Rc::new(Self::Nil(Meta::new_empty_rc()))
+        Rc::new(Self::Nil(meta::new_empty_rc()))
     }
 
     pub fn boolean_rc(boolean: bool) -> RcValue {
-        Rc::new(Self::Boolean(boolean, Meta::new_empty_rc()))
+        Rc::new(Self::Boolean(boolean, meta::new_empty_rc()))
     }
 
     pub fn integer_rc(integer: i64) -> RcValue {
-        Rc::new(Self::Integer(integer, Meta::new_empty_rc()))
+        Rc::new(Self::Integer(integer, meta::new_empty_rc()))
     }
 
     pub fn float_rc(float: Float) -> RcValue {
-        Rc::new(Self::Float(float, Meta::new_empty_rc()))
+        Rc::new(Self::Float(float, meta::new_empty_rc()))
     }
 
     pub fn string_rc(string: String) -> RcValue {
-        Rc::new(Self::String(string, Meta::new_empty_rc()))
+        Rc::new(Self::String(string, meta::new_empty_rc()))
     }
 
     pub fn symbol_rc(symbol: Symbol) -> RcValue {
-        Rc::new(Self::Symbol(symbol, Meta::new_empty_rc()))
+        Rc::new(Self::Symbol(symbol, meta::new_empty_rc()))
     }
 
     pub fn keyword_rc(keyword: Keyword) -> RcValue {
-        Rc::new(Self::Keyword(keyword, Meta::new_empty_rc()))
+        Rc::new(Self::Keyword(keyword, meta::new_empty_rc()))
     }
 
     pub fn keyword_unqualified_rc(name: &str) -> RcValue {
-        Rc::new(Self::Keyword(Keyword::new_unqualified(name), Meta::new_empty_rc()))
+        Rc::new(Self::Keyword(Keyword::new_unqualified(name), meta::new_empty_rc()))
     }
 
     pub fn keyword_qualified_rc(namespace: &str, name: &str) -> RcValue {
-        Rc::new(Self::Keyword(Keyword::new_qualified(namespace, name), Meta::new_empty_rc()))
+        Rc::new(Self::Keyword(Keyword::new_qualified(namespace, name), meta::new_empty_rc()))
     }
 
     pub fn list_rc(list: List) -> RcValue {
-        Rc::new(Self::List(list, Meta::new_empty_rc()))
+        Rc::new(Self::List(list, meta::new_empty_rc()))
     }
 
     pub fn vector_rc(vector: Vector) -> RcValue {
-        Rc::new(Self::Vector(vector, Meta::new_empty_rc()))
+        Rc::new(Self::Vector(vector, meta::new_empty_rc()))
     }
 
     pub fn set_rc(set: Set) -> RcValue {
-        Rc::new(Self::Set(set, Meta::new_empty_rc()))
+        Rc::new(Self::Set(set, meta::new_empty_rc()))
     }
 
     pub fn map_rc(map: Map) -> RcValue {
-        Rc::new(Self::Map(map, Meta::new_empty_rc()))
+        Rc::new(Self::Map(map, meta::new_empty_rc()))
     }
 
     pub fn var_rc(var: RcVar) -> RcValue {
-        Rc::new(Self::Var(var, Meta::new_empty_rc()))
+        Rc::new(Self::Var(var, meta::new_empty_rc()))
     }
 
     pub fn function_rc(function: RcFunction) -> RcValue {
-        Rc::new(Self::Function(function, Meta::new_empty_rc()))
+        Rc::new(Self::Function(function, meta::new_empty_rc()))
     }
 
     pub fn handle_rc(handle: Handle) -> RcValue {
-        Rc::new(Self::Handle(handle, Meta::new_empty_rc()))
+        Rc::new(Self::Handle(handle, meta::new_empty_rc()))
     }
 }
 
@@ -329,76 +329,76 @@ impl Value {
     }
 
     pub fn new_list_empty() -> Self {
-        Self::List(List::new_empty(), Meta::default().into_meta_rc())
+        Self::List(List::new_empty(), meta::new_empty_rc())
     }
 
     pub fn new_list_empty_rc() -> RcValue {
-        Rc::new(Self::List(List::new_empty(), Meta::default().into_meta_rc()))
+        Rc::new(Self::List(List::new_empty(), meta::new_empty_rc()))
     }
 
     pub fn new_list(elements: Vec<RcValue>) -> Self {
-        Self::List(List::from(elements), Meta::default().into_meta_rc())
+        Self::List(List::from(elements), meta::new_empty_rc())
     }
 
     pub fn new_list_rc(elements: Vec<RcValue>) -> RcValue {
-        Rc::new(Self::List(List::from(elements), Meta::default().into_meta_rc()))
+        Rc::new(Self::List(List::from(elements), meta::new_empty_rc()))
     }
 }
 
 // Vector functions
 impl Value {
     pub fn new_vector_empty() -> Self {
-        Self::Vector(Vector::new_empty(), Meta::default().into_meta_rc())
+        Self::Vector(Vector::new_empty(), meta::new_empty_rc())
     }
 
     pub fn new_vector_empty_rc() -> RcValue {
-        Rc::new(Self::Vector(Vector::new_empty(), Meta::default().into_meta_rc()))
+        Rc::new(Self::Vector(Vector::new_empty(), meta::new_empty_rc()))
     }
 
     pub fn new_vector(elements: Vec<RcValue>) -> Self {
-        Self::Vector(Vector::from(elements), Meta::default().into_meta_rc())
+        Self::Vector(Vector::from(elements), meta::new_empty_rc())
     }
 
     pub fn new_vector_rc(elements: Vec<RcValue>) -> RcValue {
-        Rc::new(Self::Vector(Vector::from(elements), Meta::default().into_meta_rc()))
+        Rc::new(Self::Vector(Vector::from(elements), meta::new_empty_rc()))
     }
 }
 
 // Set functions
 impl Value {
     pub fn new_set_empty() -> Self {
-        Self::Set(Set::new_empty(), Meta::default().into_meta_rc())
+        Self::Set(Set::new_empty(), meta::new_empty_rc())
     }
 
     pub fn new_set_empty_rc() -> RcValue {
-        Rc::new(Self::Set(Set::new_empty(), Meta::default().into_meta_rc()))
+        Rc::new(Self::Set(Set::new_empty(), meta::new_empty_rc()))
     }
 
     pub fn new_set(elements: Vec<RcValue>) -> Self {
-        Self::Set(Set::new(elements), Meta::default().into_meta_rc())
+        Self::Set(Set::new(elements), meta::new_empty_rc())
     }
 
     pub fn new_set_rc(elements: Vec<RcValue>) -> RcValue {
-        Rc::new(Self::Set(Set::new(elements), Meta::default().into_meta_rc()))
+        Rc::new(Self::Set(Set::new(elements), meta::new_empty_rc()))
     }
 }
 
 // Map functions
 impl Value {
     pub fn new_map_empty() -> Self {
-        Self::Map(Map::new_empty(), Meta::default().into_meta_rc())
+        Self::Map(Map::new_empty(), meta::new_empty_rc())
     }
 
     pub fn new_map_empty_rc() -> RcValue {
-        Rc::new(Self::Map(Map::new_empty(), Meta::default().into_meta_rc()))
+        Rc::new(Self::Map(Map::new_empty(), meta::new_empty_rc()))
     }
 
     pub fn new_map(elements: Vec<(RcValue, RcValue)>) -> Self {
-        Self::Map(Map::new(elements), Meta::default().into_meta_rc())
+        Self::Map(Map::new(elements), meta::new_empty_rc())
     }
 
     pub fn new_map_rc(elements: Vec<(RcValue, RcValue)>) -> RcValue {
-        Rc::new(Self::Map(Map::new(elements), Meta::default().into_meta_rc()))
+        Rc::new(Self::Map(Map::new(elements), meta::new_empty_rc()))
     }
 }
 
@@ -487,8 +487,8 @@ impl fmt::Display for Value {
             Self::Vector(vector, _meta)   => write!(f, "{}", vector),
             Self::Set(set, _meta)         => write!(f, "{}", set),
             Self::Map(map, _meta)         => write!(f, "{}", map),
-            Self::Var(var, meta)          => write!(f, "#var[{:p} {meta}]", RcVar::as_ptr(var).cast::<()>()),
-            Self::Function(func, meta)    => write!(f, "#fn[{addr:p} {name} {arities} {meta}]",
+            Self::Var(var, _meta)          => write!(f, "#var[{:p}]", RcVar::as_ptr(var).cast::<()>()),
+            Self::Function(func, _meta)    => write!(f, "#fn[{addr:p} {name} {arities}]",
                 addr = RcFunction::as_ptr(func).cast::<()>(),
                 name = func.name().map(|s| format!("\"{}\"", s)).unwrap_or("<unnamed>".to_owned()),
                 arities = Value::vector_from(

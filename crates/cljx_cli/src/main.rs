@@ -261,6 +261,104 @@ fn create_env() -> RcEnvironment {
     let clojure_core = env.create_namespace("clojure.core");
     clojure_core.bind_value("*ns*", Value::handle(Handle::new(clojure_core.clone())));
 
+    // (defn clojure.core/+ [& xs])
+    // (clojure.core/+ a)
+    // (clojure.core/+ a b)
+    // (clojure.core/+ a b c ,,,)
+    clojure_core.build_and_bind_function(
+        "+",
+        vec![(
+            FunctionArity::AtLeast(0),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+                let any_arg_is_float = args.iter().map(Rc::as_ref).any(Value::is_float);
+                if any_arg_is_float {
+                    let mut x = 0f64;
+                    for arg in args {
+                        let arg_integer = value::optics::view_integer(arg.as_ref());
+                        let arg_float   = value::optics::view_float(arg.as_ref());
+                        match (arg_integer, arg_float) {
+                            (Some(int), None) => x += int as f64,
+                            (None, Some(float)) => x += float.as_f64(),
+                            (Some(_), Some(_)) => unreachable!("value cannot be both integer and float"),
+                            (None, None) => panic!("+ only supports integer and float arguments, but got: {:?}", arg),
+                        }
+                    }
+                    Rc::new(Value::float(x.into()))
+                } else {
+                    let mut x = 0i64;
+                    for arg in args {
+                        let arg_integer = value::optics::view_integer(arg.as_ref()).unwrap();
+                        x += arg_integer;
+                    }
+                    Rc::new(Value::integer(x))
+                }
+            }),
+        )],
+    );
+
+    // (defn clojure.core/- [x & xs])
+    // (clojure.core/- a)
+    // (clojure.core/- a b)
+    // (clojure.core/- a b c ,,,)
+    clojure_core.build_and_bind_function(
+        "-",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnvironment, _args: Vec<RcValue>| {
+                todo!()
+                // let any_arg_is_float = args.iter().map(Rc::as_ref).any(Value::is_float);
+                // if any_arg_is_float {
+                //     let mut x = 0f64;
+                //     for arg in args {
+                //         let arg_integer = value::optics::view_integer(arg.as_ref());
+                //         let arg_float   = value::optics::view_float(arg.as_ref());
+                //         match (arg_integer, arg_float) {
+                //             (Some(int), None) => x -= int as f64,
+                //             (None, Some(float)) => x -= float.as_f64(),
+                //             (Some(_), Some(_)) => unreachable!("value cannot be both integer and float"),
+                //             (None, None) => panic!("+ only supports integer and float arguments, but got: {:?}", arg),
+                //         }
+                //     }
+                //     Rc::new(Value::float(x.into()))
+                // } else {
+                //     let mut x = 0i64;
+                //     for arg in args {
+                //         let arg_integer = value::optics::view_integer(arg.as_ref()).unwrap();
+                //         x += arg_integer;
+                //     }
+                //     Rc::new(Value::integer(x))
+                // }
+            }),
+        ), (
+            FunctionArity::AtLeast(2),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+                let any_arg_is_float = args.iter().map(Rc::as_ref).any(Value::is_float);
+                if any_arg_is_float {
+                    let mut x = 0f64;
+                    for arg in args {
+                        let arg_integer = value::optics::view_integer(arg.as_ref());
+                        let arg_float   = value::optics::view_float(arg.as_ref());
+                        match (arg_integer, arg_float) {
+                            (Some(int), None) => x -= int as f64,
+                            (None, Some(float)) => x -= float.as_f64(),
+                            (Some(_), Some(_)) => unreachable!("value cannot be both integer and float"),
+                            (None, None) => panic!("- only supports integer and float arguments, but got: {:?}", arg),
+                        }
+                    }
+                    Rc::new(Value::float(x.into()))
+                } else {
+                    let mut x = value::optics::view_integer(args[0].as_ref()).unwrap();
+                    for arg in args.iter().skip(1) {
+                        let arg_integer = value::optics::view_integer(arg.as_ref()).unwrap();
+                        x -= arg_integer;
+                    }
+                    Rc::new(Value::integer(x))
+                }
+            }),
+        )],
+    );
+
+    // (defn clojure.core/map [f coll])
     // (clojure.core/map f coll)
     clojure_core.build_and_bind_function(
         "map",
@@ -270,9 +368,9 @@ fn create_env() -> RcEnvironment {
                 let f = args[0].clone();
                 let coll = args[1].clone();
                 match coll.as_ref() {
-                    Value::List(list, _meta) => Value::new_list_rc(list.iter().map(|item| apply(env.clone(), f.clone(), vec![item.to_owned()])).collect()),
-                    Value::Vector(vector, _meta) => Value::new_vector_rc(vector.iter().map(|item| apply(env.clone(), f.clone(), vec![item.to_owned()])).collect()),
-                    Value::Set(set, _meta) => Value::new_set_rc(set.iter().map(|item| apply(env.clone(), f.clone(), vec![item.to_owned()])).collect()),
+                    Value::List(list, _meta) => Value::new_list_rc(list.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
+                    Value::Vector(vector, _meta) => Value::new_vector_rc(vector.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
+                    Value::Set(set, _meta) => Value::new_set_rc(set.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
                     Value::Map(map, _meta) => Value::new_vector_rc(map.iter().map(|(k, v)| {
                         let new_kv = apply(env.clone(), f.clone(), vec![
                             Rc::new(Value::vector_from(vec![
@@ -295,8 +393,11 @@ fn create_env() -> RcEnvironment {
         )],
     );
 
+    // (defn clojure.core/prn [v & vs])
     // (clojure.core/prn)
-    // (clojure.core/prn v & vs)
+    // (clojure.core/prn x)
+    // (clojure.core/prn x y)
+    // (clojure.core/prn x y z ,,,)
     clojure_core.build_and_bind_function(
         "prn",
         vec![(
@@ -356,6 +457,7 @@ fn create_env() -> RcEnvironment {
         )],
     );
 
+    // (defn clojure.core/resolve [symbol])
     // (clojure.core/resolve symbol)
     clojure_core.build_and_bind_function(
         "resolve",
@@ -536,7 +638,7 @@ fn create_env() -> RcEnvironment {
                 let value = args.next().unwrap();
                 let meta = args.next().unwrap();
                 let meta = value::optics::view_map(meta.as_ref()).expect("with-meta meta argument must be a map");
-                value.with_meta_rc(Meta::new_rc(meta))
+                value.with_meta_rc(meta::new_rc(meta))
             }),
         )],
     );
@@ -666,7 +768,7 @@ fn create_env() -> RcEnvironment {
                         Value::Nil(_) => {
                             let mut map = Map::new_empty();
                             map.insert(nil_key, v);
-                            Rc::new(Value::Map(map, Meta::new_rc(Map::new_empty())))
+                            Rc::new(Value::Map(map, meta::new_rc(Map::new_empty())))
                         }
                         Value::Map(map, meta) => {
                             let mut new_map = map.clone();
@@ -704,7 +806,7 @@ fn create_env() -> RcEnvironment {
                                 let nested = assoc_in_recursive(empty_map, rest_keys, v);
                                 let mut result_map = Map::new_empty();
                                 result_map.insert(first_key, nested);
-                                Rc::new(Value::Map(result_map, Meta::new_rc(Map::new_empty())))
+                                Rc::new(Value::Map(result_map, meta::new_rc(Map::new_empty())))
                             }
                             Value::Map(map, meta) => {
                                 let current = map.get_or_nil(&first_key);
@@ -947,16 +1049,16 @@ fn demo_optics(
         let ret = clojure_core.get_function_or_panic("eval")
             .invoke(env.clone(), vec![source.clone()]);
         use value::optics::meta_ref;
-        if let Some(input_meta)    = meta_ref(input.as_ref()).inner_ref() {
+        if let Some(input_meta) = meta_ref(input.as_ref()).as_ref() {
             println!("(meta input) ;; => {}", input_meta);
         }
-        if let Some(source_meta)   = meta_ref(source.as_ref()).inner_ref() {
+        if let Some(source_meta) = meta_ref(source.as_ref()).as_ref() {
             println!("(meta source) ;; => {}", source_meta);
         }
-        if let Some(expected_meta) = meta_ref(expected.as_ref()).inner_ref() {
+        if let Some(expected_meta) = meta_ref(expected.as_ref()).as_ref() {
             println!("(meta expected) ;; => {}", expected_meta);
         }
-        if let Some(ret_meta)      = meta_ref(ret.as_ref()).inner_ref() {
+        if let Some(ret_meta) = meta_ref(ret.as_ref()).as_ref() {
             println!("(meta ret) ;; => {}", ret_meta);
         }
         println!("(let [*input* {input}] {source}) ;; => (assert= {ret} {expected})");

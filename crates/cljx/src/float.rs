@@ -22,6 +22,7 @@ impl Float {
     pub fn mantissa(&self) -> Mantissa { self.0.0.clone() }
     pub fn exponent(&self) -> Exponent { self.0.1.clone() }
     pub fn sign(&self) -> Sign { self.0.2.clone() }
+    pub fn as_f64(&self) -> f64 { encode(self.mantissa(), self.exponent(), self.sign()) }
 }
 
 #[derive(Hash, Ord, PartialOrd, PartialEq, Eq)]
