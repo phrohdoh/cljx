@@ -1,63 +1,44 @@
 use std::rc::Rc;
 use crate::prelude::*;
 
-// TODO: this probably ought to be a protocol
-
-/// Meta is now a type alias for Option<Map>, removing the newtype wrapper.
-pub type Meta = Option<Map>;
-
-pub type RcMeta = Rc<Meta>;
-
-// Helper functions for Meta construction
-#[inline]
-pub fn new_empty() -> Meta {
+pub fn new_unset() -> Option<Map> {
     None
 }
 
-#[inline]
-pub fn new_empty_rc() -> RcMeta {
+pub fn new_unset_rc() -> Rc<Option<Map>> {
     Rc::new(None)
 }
 
-#[inline]
-pub fn new(map: Map) -> Meta {
+pub fn new(map: Map) -> Option<Map> {
     Some(map)
 }
 
-#[inline]
-pub fn new_rc(map: Map) -> RcMeta {
+pub fn new_rc(map: Map) -> Rc<Option<Map>> {
     Rc::new(Some(map))
 }
 
-#[inline]
-pub fn into_meta_rc(meta: Meta) -> RcMeta {
+pub fn into_meta_rc(meta: Option<Map>) -> Rc<Option<Map>> {
     Rc::new(meta)
 }
 
-// Helper functions for Meta access
-#[inline]
-pub fn inner_ref(meta: &Meta) -> Option<&Map> {
+// Helper functions for Option<Map> access
+pub fn inner_ref(meta: &Option<Map>) -> Option<&Map> {
     meta.as_ref()
 }
 
-#[inline]
-pub fn inner(meta: Meta) -> Option<Map> {
-    meta
-}
-
-/// Trait for metadata operations on RcMeta.
+/// Trait for metadata operations on Rc<Option<Map>>.
 /// Provides methods for associating key-value pairs and retrieving values.
 pub trait MetaOps {
     /// Insert or update a key-value pair in the metadata map.
-    /// Returns a new RcMeta with the updated map (doesn't mutate in place).
-    fn assoc(&self, key: RcValue, value: RcValue) -> RcMeta;
+    /// Returns a new Rc<Option<Map>> with the updated map (doesn't mutate in place).
+    fn assoc(&self, key: RcValue, value: RcValue) -> Rc<Option<Map>>;
 
     /// Retrieve a value by key from the metadata map.
     fn get(&self, key: &RcValue) -> Option<RcValue>;
 }
 
-impl MetaOps for RcMeta {
-    fn assoc(&self, key: RcValue, value: RcValue) -> RcMeta {
+impl MetaOps for Rc<Option<Map>> {
+    fn assoc(&self, key: RcValue, value: RcValue) -> Rc<Option<Map>> {
         match self.as_ref() {
             None => {
                 // No existing map, create a new one
@@ -96,7 +77,7 @@ impl MetaOps for RcMeta {
 }
 
 // Helper function to format metadata for display
-pub fn display_meta(meta: &RcMeta) -> String {
+pub fn display_meta(meta: &Rc<Option<Map>>) -> String {
     match meta.as_ref() {
         None => "{}".to_string(),
         Some(map) => format!("{}", map),

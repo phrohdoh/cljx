@@ -1,22 +1,8 @@
+use std::rc::Rc;
 use crate::prelude::*;
-// use crate::{
-//     Float,
-//     Handle,
-//     Keyword,
-//     Map,
-//     RcFunction,
-//     RcMeta,
-//     RcVar,
-//     Set,
-//     Symbol,
-//     optics::{self, IPrismOwn, Prism, PrismRef},
-//     value::{self, Value, RcValue, optics as value_optics},
-//     list::{self, List, partials as list_optics},
-//     vector::{self, Vector, optics as vector_optics},
-// };
 
 /// Helper: extract metadata from any Value, preserving it across transformations.
-pub fn meta(value: &Value) -> RcMeta {
+pub fn meta(value: &Value) -> Rc<Option<Map>> {
     match value {
         Value::Nil(m) => m.clone(),
         Value::Boolean(_, m) => m.clone(),
@@ -35,7 +21,7 @@ pub fn meta(value: &Value) -> RcMeta {
     }
 }
 
-pub fn meta_ref(value: &Value) -> &Meta {
+pub fn meta_ref(value: &Value) -> &Option<Map> {
     match value {
         Value::Nil(m) => m.as_ref(),
         Value::Boolean(_, m) => m.as_ref(),
@@ -62,7 +48,7 @@ pub fn view_meta_map_ref(value: &Value) -> Option<&Map> {
     meta_ref(value).as_ref()
 }
 
-pub fn set_meta(value: &Value, meta: RcMeta) -> RcValue {
+pub fn set_meta(value: &Value, meta: Rc<Option<Map>>) -> RcValue {
     value.with_meta_rc(meta)
 }
 

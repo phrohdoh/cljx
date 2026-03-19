@@ -8,7 +8,7 @@ pub use crate::map::{self, Map};
 pub use crate::function::{self, IFunction, RcDynIFunction, Function, FunctionArity, RcFunction, build_function, build_function_rc, build_function_value, build_function_value_rc};
 pub use crate::handle::{self, Handle, IHandle, WriteHandle, BufReadHandle};
 pub use crate::var::{self, Var, RcVar};
-pub use crate::meta::{self, Meta, RcMeta, MetaOps};
+pub use crate::meta::{self, MetaOps};
 pub use crate::value::{self, Value, RcValue};
 pub use crate::namespace::{self, Namespace, RcNamespace, GetVarError, GetValueError, GetFunctionError};
 pub use crate::environment::{self, Environment, RcEnvironment};

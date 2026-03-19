@@ -80,7 +80,7 @@ pub fn compute_consumed_range(
     }
 }
 
-/// Attaches position metadata to a Value by inserting position keys into its Meta map.
+/// Attaches position metadata to a Value by inserting position keys into its Option<Map> map.
 fn attach_position_to_value(
     value: RcValue,
     pos: SourcePosition,
