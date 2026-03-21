@@ -233,6 +233,10 @@ impl Environment {
             },
         }
     }
+
+    pub fn remove_namespace(&self, name: &str) {
+        self.namespaces.borrow_mut().remove(&SymbolUnqualified::new(name));
+    }
 }
 
 

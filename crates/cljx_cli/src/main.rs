@@ -189,14 +189,14 @@ fn eval(
     let eval_func = clojure_core.get_function_or_panic("eval");
     let apply_func = clojure_core.get_function_or_panic("apply");
     match v.as_ref() {
-        Value::Nil(_meta) => v.clone(),
-        Value::Symbol(symbol, _meta) => resolve_or_panic(env.clone(), symbol).deref().expect(&format!("attempted to deref unbound Var: #'{}", symbol)),
-        Value::Keyword(_, _meta) => v.clone(),
-        Value::Boolean(_, _meta) => v.clone(),
-        Value::Integer(_, _meta) => v.clone(),
-        Value::Float(_, _meta) => v.clone(),
-        Value::String(_, _meta) => v.clone(),
-        Value::List(list, _meta) => {
+        Value::Nil(_) => v,
+        Value::Symbol(symbol, _) => resolve_or_panic(env.clone(), symbol).deref().expect(&format!("attempted to deref unbound Var: #'{}", symbol)),
+        Value::Keyword(_, _) => v,
+        Value::Boolean(_, _) => v,
+        Value::Integer(_, _) => v,
+        Value::Float(_, _) => v,
+        Value::String(_, _) => v,
+        Value::List(list, _) => {
             if list.is_empty() { return v; }
             let args: Vec<RcValue> = list.iter().skip(1).map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect();
             let v = eval_func.invoke(env.clone(), vec![list.get_first().unwrap().to_owned()]);
@@ -206,12 +206,12 @@ fn eval(
                 apply_args
             })
         },
-        Value::Vector(vector, _meta) => Value::new_vector_rc(vector.iter().map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect()),
-        Value::Set(set, _meta) => Value::new_set_rc(set.iter().map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect()),
-        Value::Map(map, _meta) => Value::new_map_rc(map.iter().map(|(k, v)| (eval_func.invoke(env.clone(), vec![k.to_owned()]), eval_func.invoke(env.clone(), vec![v.to_owned()]))).collect()),
-        Value::Var(var, _meta) => var.deref().expect("attempted to deref unbound Var"),
-        Value::Function(_, _meta) => v.clone(),
-        Value::Handle(_, _meta) => v.clone(),
+        Value::Vector(vector, _) => Value::new_vector_rc(vector.iter().map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect()),
+        Value::Set(set, _) => Value::new_set_rc(set.iter().map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect()),
+        Value::Map(map, _) => Value::new_map_rc(map.iter().map(|(k, v)| (eval_func.invoke(env.clone(), vec![k.to_owned()]), eval_func.invoke(env.clone(), vec![v.to_owned()]))).collect()),
+        Value::Var(var, _) => var.deref().expect("attempted to deref unbound Var"),
+        Value::Function(_, _) => v,
+        Value::Handle(_, _) => v,
     }
 }
 
@@ -222,8 +222,8 @@ fn apply(
     args: Vec<RcValue>,
 ) -> RcValue {
     match f.as_ref() {
-        Value::Function(func, _meta) => func.invoke(env.clone(), args),
-        Value::Handle(handle, _meta) => {
+        Value::Function(func, _) => func.invoke(env.clone(), args),
+        Value::Handle(handle, _) => {
             if let Some(func) = handle.downcast_ref::<Function>() {
                 func.invoke(env.clone(), args)
             } else {
@@ -279,7 +279,7 @@ fn create_env() -> RcEnvironment {
                             (Some(int), None) => x += int as f64,
                             (None, Some(float)) => x += float.as_f64(),
                             (Some(_), Some(_)) => unreachable!("value cannot be both integer and float"),
-                            (None, None) => panic!("+ only supports integer and float arguments, but got: {:?}", arg),
+                            (None, None) => panic!("clojure.core/+ only supports integer and float arguments, but got: {:?}", arg),
                         }
                     }
                     Rc::new(Value::float(x.into()))
@@ -315,7 +315,7 @@ fn create_env() -> RcEnvironment {
                 //             (Some(int), None) => x -= int as f64,
                 //             (None, Some(float)) => x -= float.as_f64(),
                 //             (Some(_), Some(_)) => unreachable!("value cannot be both integer and float"),
-                //             (None, None) => panic!("+ only supports integer and float arguments, but got: {:?}", arg),
+                //             (None, None) => panic!("clojure.core/+ only supports integer and float arguments, but got: {:?}", arg),
                 //         }
                 //     }
                 //     Rc::new(Value::float(x.into()))
@@ -341,7 +341,7 @@ fn create_env() -> RcEnvironment {
                             (Some(int), None) => x -= int as f64,
                             (None, Some(float)) => x -= float.as_f64(),
                             (Some(_), Some(_)) => unreachable!("value cannot be both integer and float"),
-                            (None, None) => panic!("- only supports integer and float arguments, but got: {:?}", arg),
+                            (None, None) => panic!("clojure.core/- only supports integer and float arguments, but got: {:?}", arg),
                         }
                     }
                     Rc::new(Value::float(x.into()))
@@ -367,10 +367,10 @@ fn create_env() -> RcEnvironment {
                 let f = args[0].clone();
                 let coll = args[1].clone();
                 match coll.as_ref() {
-                    Value::List(list, _meta) => Value::new_list_rc(list.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
-                    Value::Vector(vector, _meta) => Value::new_vector_rc(vector.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
-                    Value::Set(set, _meta) => Value::new_set_rc(set.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
-                    Value::Map(map, _meta) => Value::new_vector_rc(map.iter().map(|(k, v)| {
+                    Value::List(list, _) => Value::new_list_rc(list.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
+                    Value::Vector(vector, _) => Value::new_vector_rc(vector.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
+                    Value::Set(set, _) => Value::new_set_rc(set.iter().map(|element| apply(env.clone(), f.clone(), vec![element.to_owned()])).collect()),
+                    Value::Map(map, _) => Value::new_vector_rc(map.iter().map(|(k, v)| {
                         let new_kv = apply(env.clone(), f.clone(), vec![
                             Rc::new(Value::vector_from(vec![
                                 k.to_owned(),
@@ -459,7 +459,7 @@ fn create_env() -> RcEnvironment {
             FunctionArity::Exactly(1),
             Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
                 let symbol = match args[0].as_ref() {
-                    Value::Symbol(symbol, _meta) => symbol,
+                    Value::Symbol(symbol, _) => symbol,
                     _ => panic!("resolve expects a symbol argument, but got: {:?}", args[0]),
                 };
                 let var = try_resolve(env, symbol).expect(&format!("unable to resolve: {}", symbol));
@@ -476,7 +476,7 @@ fn create_env() -> RcEnvironment {
             Box::new(|_env: RcEnvironment, args: Vec<Rc<Value>>| {
                 let derefee = args.first().unwrap().to_owned();
                 match derefee.as_ref() {
-                    Value::Var(var, _meta) => var.deref().expect("attempted to deref unbound Var").clone(),
+                    Value::Var(var, _) => var.deref().expect("attempted to deref unbound Var").clone(),
                     _ => derefee,
                 }
             }),
@@ -609,6 +609,307 @@ fn create_env() -> RcEnvironment {
                 ))
             }),
         )],
+    );
+
+    // (clojure.core/in-ns sym)
+    clojure_core.build_and_bind_function(
+        "in-ns",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let sym = value::optics::view_symbol(args[0].as_ref())
+                    .expect("in-ns argument must be a symbol");
+                let ns = env.create_namespace(sym.name());
+                env.get_namespace_or_panic("clojure.core")
+                   .bind_value("*ns*", Value::handle(Handle::new(ns.clone())));
+                Rc::new(Value::handle(Handle::new(ns)))
+            }),
+        )],
+    );
+
+    // (clojure.core/create-ns sym)
+    clojure_core.build_and_bind_function(
+        "create-ns",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let sym = value::optics::view_symbol(args[0].as_ref())
+                    .expect("create-ns argument must be a symbol");
+                let ns = env.create_namespace(sym.name());
+                Rc::new(Value::handle(Handle::new(ns)))
+            }),
+        )],
+    );
+
+    // (clojure.core/find-ns sym)
+    clojure_core.build_and_bind_function(
+        "find-ns",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let sym = value::optics::view_symbol(args[0].as_ref())
+                    .expect("find-ns argument must be a symbol");
+                match env.try_get_namespace(sym.name()) {
+                    Some(ns) => Rc::new(Value::handle(Handle::new(ns))),
+                    None => Value::nil_rc(),
+                }
+            }),
+        )],
+    );
+
+    // (clojure.core/ns-name ns)
+    clojure_core.build_and_bind_function(
+        "ns-name",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = args[0].try_get_handle::<RcNamespace>()
+                    .expect("ns-name argument must be a namespace handle");
+                Rc::new(Value::symbol_unqualified(ns.name_str()))
+            }),
+        )],
+    );
+
+    // (clojure.core/ns-publics ns)
+    clojure_core.build_and_bind_function(
+        "ns-publics",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = args[0].try_get_handle::<RcNamespace>()
+                    .expect("ns-publics argument must be a namespace handle");
+                let refers = ns.refers();
+                Rc::new(Value::map_from(
+                    ns.entries().into_iter()
+                        .filter(|(name, _)| !refers.contains_key(&SymbolUnqualified::new(name.as_str())))
+                        .map(|(sym_name, var)| (
+                            Rc::new(Value::symbol_unqualified(&sym_name)),
+                            Rc::new(Value::var(var)),
+                        ))
+                        .collect::<Vec<_>>(),
+                ))
+            }),
+        )],
+    );
+
+    // (clojure.core/ns-imports ns)
+    clojure_core.build_and_bind_function(
+        "ns-imports",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = args[0].try_get_handle::<RcNamespace>()
+                    .expect("ns-imports argument must be a namespace handle");
+                Rc::new(Value::map_from(
+                    ns.imports().into_iter()
+                        .map(|(sym, fqn)| (
+                            Rc::new(Value::symbol_unqualified(sym.name())),
+                            Rc::new(Value::string(fqn)),
+                        ))
+                        .collect::<Vec<_>>(),
+                ))
+            }),
+        )],
+    );
+
+    // (clojure.core/ns-aliases ns)
+    clojure_core.build_and_bind_function(
+        "ns-aliases",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = args[0].try_get_handle::<RcNamespace>()
+                    .expect("ns-aliases argument must be a namespace handle");
+                Rc::new(Value::map_from(
+                    ns.aliases().into_iter()
+                        .map(|(sym, alias_ns)| (
+                            Rc::new(Value::symbol_unqualified(sym.name())),
+                            Rc::new(Value::handle(Handle::new(alias_ns))),
+                        ))
+                        .collect::<Vec<_>>(),
+                ))
+            }),
+        )],
+    );
+
+    // (clojure.core/ns-refers ns)
+    clojure_core.build_and_bind_function(
+        "ns-refers",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = args[0].try_get_handle::<RcNamespace>()
+                    .expect("ns-refers argument must be a namespace handle");
+                Rc::new(Value::map_from(
+                    ns.refers().into_iter()
+                        .map(|(sym, var)| (
+                            Rc::new(Value::symbol_unqualified(sym.name())),
+                            Rc::new(Value::var(var)),
+                        ))
+                        .collect::<Vec<_>>(),
+                ))
+            }),
+        )],
+    );
+
+    // (clojure.core/ns-resolve ns sym)
+    clojure_core.build_and_bind_function(
+        "ns-resolve",
+        vec![(
+            FunctionArity::Exactly(2),
+            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = args[0].try_get_handle::<RcNamespace>()
+                    .expect("ns-resolve first argument must be a namespace handle");
+                let sym = value::optics::view_symbol(args[1].as_ref())
+                    .expect("ns-resolve second argument must be a symbol");
+                match &sym {
+                    Symbol::Unqualified(s) => match ns.try_get_var(s.name()) {
+                        Ok(var) => Rc::new(Value::var(var)),
+                        Err(_) => Value::nil_rc(),
+                    },
+                    Symbol::Qualified(s) => {
+                        match env.try_get_namespace(s.namespace())
+                            .and_then(|lookup_ns| lookup_ns.try_get_var(s.name()).ok())
+                        {
+                            Some(var) => Rc::new(Value::var(var)),
+                            None => Value::nil_rc(),
+                        }
+                    },
+                }
+            }),
+        )],
+    );
+
+    // (clojure.core/resolve sym)
+    clojure_core.build_and_bind_function(
+        "resolve",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let current_ns = env.get_namespace_or_panic("clojure.core")
+                    .try_get_handle::<RcNamespace>("*ns*")
+                    .expect("*ns* must be a namespace handle");
+                let sym = value::optics::view_symbol(args[0].as_ref())
+                    .expect("resolve argument must be a symbol");
+                match &sym {
+                    Symbol::Unqualified(s) => match current_ns.try_get_var(s.name()) {
+                        Ok(var) => Rc::new(Value::var(var)),
+                        Err(_) => Value::nil_rc(),
+                    },
+                    Symbol::Qualified(s) => {
+                        match env.try_get_namespace(s.namespace())
+                            .and_then(|lookup_ns| lookup_ns.try_get_var(s.name()).ok())
+                        {
+                            Some(var) => Rc::new(Value::var(var)),
+                            None => Value::nil_rc(),
+                        }
+                    },
+                }
+            }),
+        )],
+    );
+
+    // (clojure.core/remove-ns sym)
+    clojure_core.build_and_bind_function(
+        "remove-ns",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let sym = value::optics::view_symbol(args[0].as_ref())
+                    .expect("remove-ns argument must be a symbol");
+                env.remove_namespace(sym.name());
+                Value::nil_rc()
+            }),
+        )],
+    );
+
+    // (clojure.core/ns-unalias ns alias)
+    clojure_core.build_and_bind_function(
+        "ns-unalias",
+        vec![(
+            FunctionArity::Exactly(2),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = args[0].try_get_handle::<RcNamespace>()
+                    .expect("ns-unalias first argument must be a namespace handle");
+                let alias = value::optics::view_symbol(args[1].as_ref())
+                    .expect("ns-unalias second argument must be a symbol");
+                ns.remove_alias(alias.name());
+                Value::nil_rc()
+            }),
+        )],
+    );
+
+    // (clojure.core/ns-unmap ns sym)
+    clojure_core.build_and_bind_function(
+        "ns-unmap",
+        vec![(
+            FunctionArity::Exactly(2),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = args[0].try_get_handle::<RcNamespace>()
+                    .expect("ns-unmap first argument must be a namespace handle");
+                let sym = value::optics::view_symbol(args[1].as_ref())
+                    .expect("ns-unmap second argument must be a symbol");
+                ns.remove_var(sym.name());
+                Value::nil_rc()
+            }),
+        )],
+    );
+
+    // (clojure.core/intern ns sym)
+    // (clojure.core/intern ns sym val)
+    clojure_core.build_and_bind_function(
+        "intern",
+        vec![
+            (
+                FunctionArity::Exactly(2),
+                Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                    let ns = match args[0].try_get_handle::<RcNamespace>() {
+                        Ok(ns) => ns,
+                        Err(_) => {
+                            let sym = value::optics::view_symbol(args[0].as_ref())
+                                .expect("intern first arg must be a namespace handle or symbol");
+                            env.get_namespace_or_panic(sym.name())
+                        }
+                    };
+                    let var_sym = value::optics::view_symbol(args[1].as_ref())
+                        .expect("intern second argument must be a symbol");
+                    let var = match ns.try_get_var(var_sym.name()) {
+                        Ok(existing) => existing,
+                        Err(_) => {
+                            let new_var = Rc::new(Var::new_unbound());
+                            ns.insert_var(var_sym.name(), new_var.clone());
+                            new_var
+                        }
+                    };
+                    Rc::new(Value::var(var))
+                }),
+            ),
+            (
+                FunctionArity::Exactly(3),
+                Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                    let ns = match args[0].try_get_handle::<RcNamespace>() {
+                        Ok(ns) => ns,
+                        Err(_) => {
+                            let sym = value::optics::view_symbol(args[0].as_ref())
+                                .expect("intern first arg must be a namespace handle or symbol");
+                            env.get_namespace_or_panic(sym.name())
+                        }
+                    };
+                    let var_sym = value::optics::view_symbol(args[1].as_ref())
+                        .expect("intern second argument must be a symbol");
+                    let var = match ns.try_get_var(var_sym.name()) {
+                        Ok(existing) => existing,
+                        Err(_) => {
+                            let new_var = Rc::new(Var::new_unbound());
+                            ns.insert_var(var_sym.name(), new_var.clone());
+                            new_var
+                        }
+                    };
+                    var.bind(args[2].clone());
+                    Rc::new(Value::var(var))
+                }),
+            ),
+        ],
     );
 
     // (clojure.core/meta obj)
@@ -772,7 +1073,7 @@ fn create_env() -> RcEnvironment {
                             new_map.insert(nil_key, v);
                             Rc::new(Value::Map(new_map, meta.clone()))
                         }
-                        Value::Vector(_vec, _meta) => {
+                        Value::Vector(_vec, _) => {
                             // For vectors, nil is not a valid integer key
                             let err_msg = format!("Key must be integer");
                             let _ = value::optics::view_integer(nil_key.as_ref())
@@ -897,8 +1198,8 @@ fn create_env() -> RcEnvironment {
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
                 match args[0].as_ref() {
-                    Value::List(list, _meta) => list.get_first().unwrap_or_else(Value::nil_rc),
-                    Value::Vector(vec, _meta) => vec.get_first().unwrap_or_else(Value::nil_rc),
+                    Value::List(list, _) => list.get_first().unwrap_or_else(Value::nil_rc),
+                    Value::Vector(vec, _) => vec.get_first().unwrap_or_else(Value::nil_rc),
                     _ => Value::nil_rc(),
                 }
             }),
@@ -912,8 +1213,8 @@ fn create_env() -> RcEnvironment {
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
                 match args[0].as_ref() {
-                    Value::List(list, _meta) => list.get_second().unwrap_or_else(Value::nil_rc),
-                    Value::Vector(vec, _meta) => vec.get_second().unwrap_or_else(Value::nil_rc),
+                    Value::List(list, _) => list.get_second().unwrap_or_else(Value::nil_rc),
+                    Value::Vector(vec, _) => vec.get_second().unwrap_or_else(Value::nil_rc),
                     _ => Value::nil_rc(),
                 }
             }),
@@ -927,8 +1228,8 @@ fn create_env() -> RcEnvironment {
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
                 match args[0].as_ref() {
-                    Value::List(list, _meta) => list.get_last().unwrap_or_else(Value::nil_rc),
-                    Value::Vector(vec, _meta) => vec.get_last().unwrap_or_else(Value::nil_rc),
+                    Value::List(list, _) => list.get_last().unwrap_or_else(Value::nil_rc),
+                    Value::Vector(vec, _) => vec.get_last().unwrap_or_else(Value::nil_rc),
                     _ => Value::nil_rc(),
                 }
             }),
@@ -1852,5 +2153,637 @@ mod tests {
         let value = read_output.1.expect("no value read");
 
         let _result = eval(env, value);
+    }
+
+    // create-ns tests
+    #[test]
+    fn create_ns_creates_new_namespace() {
+        let env = create_env();
+
+        // Call create-ns by constructing the symbol and calling through apply
+        let sym = Rc::new(Value::symbol_unqualified("my.test.ns"));
+        let create_ns_func = env.get_namespace_or_panic("clojure.core")
+            .get_function_or_panic("create-ns");
+        let result = create_ns_func.invoke(env.clone(), vec![sym]);
+
+        // Verify result is a Handle
+        assert!(result.is_handle());
+
+        // Verify find-ns can find it
+        assert!(env.has_namespace("my.test.ns"));
+    }
+
+    #[test]
+    fn create_ns_idempotent() {
+        let env = create_env();
+        let ns = env.create_namespace("idempotent.test");
+        ns.insert_var("existing-var", Var::new_bound(Value::integer(99)));
+
+        // Call create-ns
+        let sym = Rc::new(Value::symbol_unqualified("idempotent.test"));
+        let create_ns_func = env.get_namespace_or_panic("clojure.core")
+            .get_function_or_panic("create-ns");
+        let _result = create_ns_func.invoke(env.clone(), vec![sym]);
+
+        // Verify the var still exists
+        let ns_again = env.get_namespace_or_panic("idempotent.test");
+        assert!(ns_again.contains_var("existing-var"));
+    }
+
+    // in-ns tests
+    #[test]
+    fn in_ns_creates_new_namespace() {
+        let env = create_env();
+
+        let sym = Rc::new(Value::symbol_unqualified("new.ns"));
+        let in_ns_func = env.get_namespace_or_panic("clojure.core")
+            .get_function_or_panic("in-ns");
+        let _result = in_ns_func.invoke(env.clone(), vec![sym]);
+
+        assert!(env.has_namespace("new.ns"));
+    }
+
+    #[test]
+    fn in_ns_updates_star_ns_star() {
+        let env = create_env();
+
+        let sym = Rc::new(Value::symbol_unqualified("some.ns"));
+        let in_ns_func = env.get_namespace_or_panic("clojure.core")
+            .get_function_or_panic("in-ns");
+        let _result = in_ns_func.invoke(env.clone(), vec![sym]);
+
+        // Get *ns* from clojure.core
+        let current_ns = env.get_namespace_or_panic("clojure.core")
+            .try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should be a namespace handle");
+
+        assert_eq!(current_ns.name_str(), "some.ns");
+    }
+
+    #[test]
+    fn in_ns_returns_handle() {
+        let env = create_env();
+
+        let sym = Rc::new(Value::symbol_unqualified("handle.test"));
+        let in_ns_func = env.get_namespace_or_panic("clojure.core")
+            .get_function_or_panic("in-ns");
+        let result = in_ns_func.invoke(env.clone(), vec![sym]);
+
+        assert!(result.is_handle());
+    }
+
+    #[test]
+    fn in_ns_does_not_overwrite_existing() {
+        let env = create_env();
+        let ns = env.create_namespace("preserve.ns");
+        ns.insert_var("old-var", Var::new_bound(Value::integer(42)));
+
+        let sym = Rc::new(Value::symbol_unqualified("preserve.ns"));
+        let in_ns_func = env.get_namespace_or_panic("clojure.core")
+            .get_function_or_panic("in-ns");
+        let _result = in_ns_func.invoke(env.clone(), vec![sym]);
+
+        let ns_after = env.get_namespace_or_panic("preserve.ns");
+        assert!(ns_after.contains_var("old-var"));
+    }
+
+    // find-ns tests
+    #[test]
+    fn find_ns_returns_handle_for_existing() {
+        let env = create_env();
+
+        let sym = Rc::new(Value::symbol_unqualified("clojure.core"));
+        let find_ns_func = env.get_namespace_or_panic("clojure.core")
+            .get_function_or_panic("find-ns");
+        let result = find_ns_func.invoke(env.clone(), vec![sym]);
+
+        assert!(result.is_handle());
+    }
+
+    #[test]
+    fn find_ns_returns_nil_for_missing() {
+        let env = create_env();
+
+        let sym = Rc::new(Value::symbol_unqualified("nonexistent"));
+        let find_ns_func = env.get_namespace_or_panic("clojure.core")
+            .get_function_or_panic("find-ns");
+        let result = find_ns_func.invoke(env.clone(), vec![sym]);
+
+        assert!(result.is_nil());
+    }
+
+    // ns-name tests
+    #[test]
+    fn ns_name_returns_correct_symbol() {
+        let env = create_env();
+
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let find_ns_func = clojure_core.get_function_or_panic("find-ns");
+        let ns_handle = find_ns_func.invoke(env.clone(), vec![Rc::new(Value::symbol_unqualified("clojure.core"))]);
+
+        let ns_name_func = clojure_core.get_function_or_panic("ns-name");
+        let result = ns_name_func.invoke(env.clone(), vec![ns_handle]);
+
+        let sym = value::optics::view_symbol(result.as_ref())
+            .expect("ns-name should return a symbol");
+        assert_eq!(sym.name(), "clojure.core");
+    }
+
+    #[test]
+    fn ns_name_after_in_ns() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let in_ns_func = clojure_core.get_function_or_panic("in-ns");
+        let _in_result = in_ns_func.invoke(env.clone(), vec![Rc::new(Value::symbol_unqualified("foo.bar"))]);
+
+        let ns_name_func = clojure_core.get_function_or_panic("ns-name");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_name_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let sym = value::optics::view_symbol(result.as_ref())
+            .expect("ns-name should return a symbol");
+        assert_eq!(sym.name(), "foo.bar");
+    }
+
+    // ns-publics tests
+    #[test]
+    fn ns_publics_contains_interned_var() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        // Intern a variable
+        let intern_func = clojure_core.get_function_or_panic("intern");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let _intern_result = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns.clone()))),
+            Rc::new(Value::symbol_unqualified("testpub")),
+            Rc::new(Value::integer(1)),
+        ]);
+
+        // Get ns-publics
+        let ns_publics_func = clojure_core.get_function_or_panic("ns-publics");
+        let result = ns_publics_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let map = value::optics::view_map(result.as_ref())
+            .expect("ns-publics should return a map");
+        let key = Rc::new(Value::symbol_unqualified("testpub"));
+        assert!(map.get(&key).is_some());
+    }
+
+    #[test]
+    fn ns_publics_excludes_refers() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let referred_var = Rc::new(Var::new_bound(Value::integer(1)));
+        clojure_core.add_refer("referred-var", referred_var);
+
+        let ns_publics_func = clojure_core.get_function_or_panic("ns-publics");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_publics_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let map = value::optics::view_map(result.as_ref())
+            .expect("ns-publics should return a map");
+        let key = Rc::new(Value::symbol_unqualified("referred-var"));
+        assert!(map.get(&key).is_none());
+    }
+
+    // ns-imports tests
+    #[test]
+    fn ns_imports_empty_by_default() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let ns_imports_func = clojure_core.get_function_or_panic("ns-imports");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_imports_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let map = value::optics::view_map(result.as_ref())
+            .expect("ns-imports should return a map");
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn ns_imports_returns_added_import() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        clojure_core.add_import("MyClass", "com.example.MyClass".to_string());
+
+        let ns_imports_func = clojure_core.get_function_or_panic("ns-imports");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_imports_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let map = value::optics::view_map(result.as_ref())
+            .expect("ns-imports should return a map");
+        let key = Rc::new(Value::symbol_unqualified("MyClass"));
+        let val = map.get(&key).expect("MyClass key should exist");
+        let fqn = value::optics::view_string(val.as_ref())
+            .expect("value should be a string");
+        assert_eq!(fqn, "com.example.MyClass");
+    }
+
+    // ns-aliases tests
+    #[test]
+    fn ns_aliases_empty_by_default() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let ns_aliases_func = clojure_core.get_function_or_panic("ns-aliases");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_aliases_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let map = value::optics::view_map(result.as_ref())
+            .expect("ns-aliases should return a map");
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn ns_aliases_returns_added_alias() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let other_ns = env.create_namespace("other.ns");
+        clojure_core.add_alias("foo", other_ns);
+
+        let ns_aliases_func = clojure_core.get_function_or_panic("ns-aliases");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_aliases_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let map = value::optics::view_map(result.as_ref())
+            .expect("ns-aliases should return a map");
+        let key = Rc::new(Value::symbol_unqualified("foo"));
+        assert!(map.get(&key).is_some());
+    }
+
+    // ns-refers tests
+    #[test]
+    fn ns_refers_empty_by_default() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let ns_refers_func = clojure_core.get_function_or_panic("ns-refers");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_refers_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let map = value::optics::view_map(result.as_ref())
+            .expect("ns-refers should return a map");
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn ns_refers_returns_added_refer() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let var = Rc::new(Var::new_bound(Value::integer(1)));
+        clojure_core.add_refer("bar", var);
+
+        let ns_refers_func = clojure_core.get_function_or_panic("ns-refers");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_refers_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
+
+        let map = value::optics::view_map(result.as_ref())
+            .expect("ns-refers should return a map");
+        let key = Rc::new(Value::symbol_unqualified("bar"));
+        assert!(map.get(&key).is_some());
+    }
+
+    // ns-resolve tests
+    #[test]
+    fn ns_resolve_unqualified_present() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        // Intern a var
+        let intern_func = clojure_core.get_function_or_panic("intern");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let _intern_result = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns.clone()))),
+            Rc::new(Value::symbol_unqualified("myvar")),
+            Rc::new(Value::integer(42)),
+        ]);
+
+        // Resolve it
+        let ns_resolve_func = clojure_core.get_function_or_panic("ns-resolve");
+        let result = ns_resolve_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("myvar")),
+        ]);
+
+        assert!(result.is_var());
+        match result.as_ref() {
+            Value::Var(var, _) => {
+                let deref = var.deref().expect("var should be bound");
+                let n = value::optics::view_integer(deref.as_ref())
+                    .expect("should be an integer");
+                assert_eq!(n, 42);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn ns_resolve_unqualified_absent() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let ns_resolve_func = clojure_core.get_function_or_panic("ns-resolve");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_resolve_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("no-such-var")),
+        ]);
+
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn ns_resolve_qualified_symbol() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let qvar = Rc::new(Var::new_bound(Value::integer(7)));
+        clojure_core.insert_var("qvar", qvar);
+
+        let ns_resolve_func = clojure_core.get_function_or_panic("ns-resolve");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_resolve_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_qualified("clojure.core", "qvar")),
+        ]);
+
+        assert!(result.is_var());
+    }
+
+    // resolve tests
+    #[test]
+    fn resolve_present_symbol() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let resolve_func = clojure_core.get_function_or_panic("resolve");
+        let result = resolve_func.invoke(env.clone(), vec![Rc::new(Value::symbol_unqualified("prn"))]);
+
+        assert!(result.is_var());
+    }
+
+    #[test]
+    fn resolve_absent_symbol() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let resolve_func = clojure_core.get_function_or_panic("resolve");
+        let result = resolve_func.invoke(env.clone(), vec![Rc::new(Value::symbol_unqualified("no-such-binding"))]);
+
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn resolve_after_in_ns() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let test_ns = env.create_namespace("test.resolve.ns");
+        let local_var = Rc::new(Var::new_bound(Value::integer(99)));
+        test_ns.insert_var("ns-local-var", local_var);
+
+        let in_ns_func = clojure_core.get_function_or_panic("in-ns");
+        let _in_result = in_ns_func.invoke(env.clone(), vec![Rc::new(Value::symbol_unqualified("test.resolve.ns"))]);
+
+        let resolve_func = clojure_core.get_function_or_panic("resolve");
+        let result = resolve_func.invoke(env.clone(), vec![Rc::new(Value::symbol_unqualified("ns-local-var"))]);
+
+        assert!(result.is_var());
+    }
+
+    // remove-ns tests
+    #[test]
+    fn remove_ns_removes_namespace() {
+        let env = create_env();
+        env.create_namespace("to.remove");
+        assert!(env.has_namespace("to.remove"));
+
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let remove_ns_func = clojure_core.get_function_or_panic("remove-ns");
+        let _result = remove_ns_func.invoke(env.clone(), vec![Rc::new(Value::symbol_unqualified("to.remove"))]);
+
+        assert!(!env.has_namespace("to.remove"));
+    }
+
+    #[test]
+    fn remove_ns_nonexistent_is_noop() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let remove_ns_func = clojure_core.get_function_or_panic("remove-ns");
+        let result = remove_ns_func.invoke(env.clone(), vec![Rc::new(Value::symbol_unqualified("never.existed"))]);
+
+        // Should return nil and not panic
+        assert!(result.is_nil());
+    }
+
+    // ns-unalias tests
+    #[test]
+    fn ns_unalias_removes_alias() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let alias_ns = env.create_namespace("alias.target");
+        clojure_core.add_alias("myalias", alias_ns);
+
+        let ns_unalias_func = clojure_core.get_function_or_panic("ns-unalias");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let _result = ns_unalias_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("myalias")),
+        ]);
+
+        let aliases = clojure_core.aliases();
+        assert!(aliases.is_empty());
+    }
+
+    #[test]
+    fn ns_unalias_nonexistent_is_noop() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let ns_unalias_func = clojure_core.get_function_or_panic("ns-unalias");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_unalias_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("ghost")),
+        ]);
+
+        assert!(result.is_nil());
+    }
+
+    // ns-unmap tests
+    #[test]
+    fn ns_unmap_removes_var() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        // Intern a var
+        let intern_func = clojure_core.get_function_or_panic("intern");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let _intern_result = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns.clone()))),
+            Rc::new(Value::symbol_unqualified("to-unmap")),
+            Rc::new(Value::integer(5)),
+        ]);
+
+        // Unmap it
+        let ns_unmap_func = clojure_core.get_function_or_panic("ns-unmap");
+        let _unmap_result = ns_unmap_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("to-unmap")),
+        ]);
+
+        // Verify it's gone
+        assert!(!clojure_core.contains_var("to-unmap"));
+    }
+
+    #[test]
+    fn ns_unmap_nonexistent_is_noop() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let ns_unmap_func = clojure_core.get_function_or_panic("ns-unmap");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = ns_unmap_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("ghost")),
+        ]);
+
+        assert!(result.is_nil());
+    }
+
+    // intern tests
+    #[test]
+    fn intern_2_arity_creates_unbound_var() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let intern_func = clojure_core.get_function_or_panic("intern");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("fresh-var")),
+        ]);
+
+        assert!(result.is_var());
+        match result.as_ref() {
+            Value::Var(var, _) => {
+                assert!(var.is_unbound());
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn intern_3_arity_binds_value() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let intern_func = clojure_core.get_function_or_panic("intern");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+        let result = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("bound-var")),
+            Rc::new(Value::integer(99)),
+        ]);
+
+        assert!(result.is_var());
+        match result.as_ref() {
+            Value::Var(var, _) => {
+                let deref = var.deref().expect("var should be bound");
+                let n = value::optics::view_integer(deref.as_ref())
+                    .expect("should be an integer");
+                assert_eq!(n, 99);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn intern_2_arity_returns_existing_var() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+
+        let intern_func = clojure_core.get_function_or_panic("intern");
+        let result1 = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns.clone()))),
+            Rc::new(Value::symbol_unqualified("same-name")),
+        ]);
+        let result2 = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("same-name")),
+        ]);
+
+        match (result1.as_ref(), result2.as_ref()) {
+            (Value::Var(var1, _), Value::Var(var2, _)) => {
+                assert!(Rc::ptr_eq(var1, var2));
+            }
+            _ => panic!("Expected both to be Vars"),
+        }
+    }
+
+    #[test]
+    fn intern_3_arity_rebinds_existing_var() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let current_ns = clojure_core.try_get_handle::<RcNamespace>("*ns*")
+            .expect("*ns* should exist");
+
+        let intern_func = clojure_core.get_function_or_panic("intern");
+        let _result1 = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns.clone()))),
+            Rc::new(Value::symbol_unqualified("rebind-var")),
+            Rc::new(Value::integer(1)),
+        ]);
+        let result2 = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::handle(Handle::new(current_ns))),
+            Rc::new(Value::symbol_unqualified("rebind-var")),
+            Rc::new(Value::integer(2)),
+        ]);
+
+        match result2.as_ref() {
+            Value::Var(var, _) => {
+                let deref = var.deref().expect("var should be bound");
+                let n = value::optics::view_integer(deref.as_ref())
+                    .expect("should be an integer");
+                assert_eq!(n, 2);
+            }
+            _ => panic!("Expected Var"),
+        }
+    }
+
+    #[test]
+    fn intern_accepts_symbol_as_first_arg() {
+        let env = create_env();
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+
+        let intern_func = clojure_core.get_function_or_panic("intern");
+        let result = intern_func.invoke(env.clone(), vec![
+            Rc::new(Value::symbol_unqualified("clojure.core")),
+            Rc::new(Value::symbol_unqualified("sym-via-sym")),
+        ]);
+
+        assert!(result.is_var());
     }
 }

@@ -71,11 +71,17 @@ impl From<GetValueError> for GetHandleError {
 
 pub type RcNamespace = Rc<Namespace>;
 pub type NamedVars = HashMap<SymbolUnqualified, RcVar>;
+pub type Aliases = HashMap<SymbolUnqualified, RcNamespace>;
+pub type Imports = HashMap<SymbolUnqualified, String>;
+pub type Refers = HashMap<SymbolUnqualified, RcVar>;
 
 #[derive(Debug)]
 pub struct Namespace {
     name: SymbolUnqualified,
     mappings: RefCell<NamedVars>,
+    aliases: RefCell<Aliases>,
+    imports: RefCell<Imports>,
+    refers: RefCell<Refers>,
 }
 
 // constructors
@@ -85,9 +91,10 @@ impl Namespace {
     ) -> Self {
         Self {
             name: SymbolUnqualified::new(name),
-            mappings: RefCell::new(
-                NamedVars::new(),
-            ),
+            mappings: RefCell::new(NamedVars::new()),
+            aliases: RefCell::new(Aliases::new()),
+            imports: RefCell::new(Imports::new()),
+            refers: RefCell::new(Refers::new()),
         }
     }
 
@@ -105,6 +112,9 @@ impl Namespace {
                     .map(|(n, v)| (SymbolUnqualified::new(n), Rc::new(Var::new_bound(v))))
                     .collect()
             ),
+            aliases: RefCell::new(Aliases::new()),
+            imports: RefCell::new(Imports::new()),
+            refers: RefCell::new(Refers::new()),
         }
     }
 
@@ -122,6 +132,9 @@ impl Namespace {
                     .map(|(n, v)| (SymbolUnqualified::new(n), Rc::new(v)))
                     .collect()
             ),
+            aliases: RefCell::new(Aliases::new()),
+            imports: RefCell::new(Imports::new()),
+            refers: RefCell::new(Refers::new()),
         }
     }
 
@@ -139,6 +152,9 @@ impl Namespace {
                     .map(|(n, v)| (SymbolUnqualified::new(n), v))
                     .collect()
             ),
+            aliases: RefCell::new(Aliases::new()),
+            imports: RefCell::new(Imports::new()),
+            refers: RefCell::new(Refers::new()),
         }
     }
 }
@@ -168,6 +184,18 @@ impl Namespace {
             .iter()
             .map(|(sym, var)| (sym.name().to_owned(), var.clone()))
             .collect()
+    }
+
+    pub fn aliases(&self) -> Aliases {
+        self.aliases.borrow().clone()
+    }
+
+    pub fn imports(&self) -> Imports {
+        self.imports.borrow().clone()
+    }
+
+    pub fn refers(&self) -> Refers {
+        self.refers.borrow().clone()
     }
 
     #[tracing::instrument(ret, fields(name), level = "info")]
@@ -334,6 +362,22 @@ impl Namespace {
             self.mappings.borrow_mut()
                 .remove(&SymbolUnqualified::new(name));
         }
+    }
+
+    pub fn add_alias(&self, alias: &str, ns: RcNamespace) {
+        self.aliases.borrow_mut().insert(SymbolUnqualified::new(alias), ns);
+    }
+
+    pub fn remove_alias(&self, alias: &str) {
+        self.aliases.borrow_mut().remove(&SymbolUnqualified::new(alias));
+    }
+
+    pub fn add_import(&self, simple: &str, fqn: String) {
+        self.imports.borrow_mut().insert(SymbolUnqualified::new(simple), fqn);
+    }
+
+    pub fn add_refer(&self, name: &str, var: RcVar) {
+        self.refers.borrow_mut().insert(SymbolUnqualified::new(name), var);
     }
 }
 

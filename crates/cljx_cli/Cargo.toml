@@ -21,7 +21,3 @@ opentelemetry_sdk     = { version = "0.31.0", features = ["rt-tokio-current-thre
 opentelemetry-otlp    = { version = "0.31.0", features = ["trace", "grpc-tonic"] }
 tokio                 = { version = "1.49.0", features = ["rt-multi-thread", "macros"] }
 futures = "0.3.32"
-
-[[example]]
-name = "stdin_test"
-path = "examples/stdin_test.rs"
