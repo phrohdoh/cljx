@@ -36,7 +36,7 @@ pub struct Var {
     /// Track recursion depth for this variable (per thread)
     depth: RefCell<usize>,
     /// Metadata associated with this Var (independent from the bound value's metadata)
-    meta: RefCell<Rc<Option<Map>>>,
+    meta: RefCell<Option<Rc<Map>>>,
 }
 
 impl Var {
@@ -45,7 +45,7 @@ impl Var {
         Self {
             value: RefCell::new(None),
             depth: RefCell::new(0),
-            meta: RefCell::new(meta::new_unset_rc()),
+            meta: RefCell::new(None),
         }
     }
 
@@ -54,12 +54,12 @@ impl Var {
         Self {
             value: RefCell::new(Some(rc_value.into())),
             depth: RefCell::new(0),
-            meta: RefCell::new(meta::new_unset_rc()),
+            meta: RefCell::new(None),
         }
     }
 
     /// Create a new unbound variable with initial metadata
-    pub fn new_unbound_with_meta(meta: Rc<Option<Map>>) -> Self {
+    pub fn new_unbound_with_meta(meta: Option<Rc<Map>>) -> Self {
         Self {
             value: RefCell::new(None),
             depth: RefCell::new(0),
@@ -68,7 +68,7 @@ impl Var {
     }
 
     /// Create a new variable bound to a value with initial metadata
-    pub fn new_bound_with_meta(rc_value: impl Into<RcValue>, meta: Rc<Option<Map>>) -> Self {
+    pub fn new_bound_with_meta(rc_value: impl Into<RcValue>, meta: Option<Rc<Map>>) -> Self {
         Self {
             value: RefCell::new(Some(rc_value.into())),
             depth: RefCell::new(0),
@@ -185,7 +185,7 @@ impl Var {
     /// 
     /// Each Var has its own independent metadata, separate from the metadata
     /// of the value it holds. This returns the Var's metadata.
-    pub fn meta(&self) -> Rc<Option<Map>> {
+    pub fn meta(&self) -> Option<Rc<Map>> {
         self.meta.borrow().clone()
     }
 
@@ -197,7 +197,7 @@ impl Var {
     }
 
     /// Replace the entire metadata of this Var in-place.
-    pub fn set_meta(&self, meta: Rc<Option<Map>>) {
+    pub fn set_meta(&self, meta: Option<Rc<Map>>) {
         *self.meta.borrow_mut() = meta;
     }
 
@@ -205,7 +205,7 @@ impl Var {
     /// 
     /// This updates or inserts the key-value pair in the current metadata map,
     /// storing the result back in the Var's metadata. Returns the new metadata.
-    pub fn assoc_meta(&self, key: RcValue, value: RcValue) -> Rc<Option<Map>> {
+    pub fn assoc_meta(&self, key: RcValue, value: RcValue) -> Option<Rc<Map>> {
         let new_meta = self.meta.borrow().assoc(key, value);
         *self.meta.borrow_mut() = new_meta.clone();
         new_meta
@@ -267,7 +267,7 @@ impl MetaOps for Var {
     /// Associate a key-value pair in this Var's metadata.
     /// 
     /// This delegates to assoc_meta() which mutates in-place.
-    fn assoc(&self, key: RcValue, value: RcValue) -> Rc<Option<Map>> {
+    fn assoc(&self, key: RcValue, value: RcValue) -> Option<Rc<Map>> {
         self.assoc_meta(key, value)
     }
 
@@ -279,7 +279,7 @@ impl MetaOps for Var {
 
 impl MetaOps for RcVar {
     /// Associate a key-value pair in this Var's metadata.
-    fn assoc(&self, key: RcValue, value: RcValue) -> Rc<Option<Map>> {
+    fn assoc(&self, key: RcValue, value: RcValue) -> Option<Rc<Map>> {
         Var::assoc(self, key, value)
     }
 
@@ -411,7 +411,7 @@ mod tests {
         // Create a metadata map and set it
         let mut meta_map = Map::new_empty();
         meta_map.insert(key.clone(), value.clone());
-        let meta = meta::new_rc(meta_map);
+        let meta = Some(Rc::new(meta_map));
         
         var.set_meta(meta);
         
@@ -432,8 +432,12 @@ mod tests {
         // Metadata should now contain the key-value pair
         assert_eq!(var.get_meta(&key1), Some(value1));
         
-        // All the same Rc pointer
-        assert!(Rc::ptr_eq(&var.meta(), &new_meta));
+        // Both should be Some with the same Rc pointer
+        if let (Some(var_rc), Some(new_rc)) = (var.meta(), new_meta) {
+            assert!(Rc::ptr_eq(&var_rc, &new_rc));
+        } else {
+            panic!("Expected both to be Some");
+        }
     }
 
     #[test]
@@ -473,7 +477,7 @@ mod tests {
         
         let mut meta_map = Map::new_empty();
         meta_map.insert(key.clone(), value.clone());
-        let meta = meta::new_rc(meta_map);
+        let meta = Some(Rc::new(meta_map));
         
         let var = Var::new_unbound_with_meta(meta);
         
@@ -490,7 +494,7 @@ mod tests {
         
         let mut meta_map = Map::new_empty();
         meta_map.insert(key.clone(), meta_value.clone());
-        let meta = meta::new_rc(meta_map);
+        let meta = Some(Rc::new(meta_map));
         
         let var = Var::new_bound_with_meta(bound_value.clone(), meta);
         
@@ -543,7 +547,12 @@ mod tests {
         let new_meta = MetaOps::assoc(&var, key.clone(), value.clone());
         
         assert_eq!(var.get_meta(&key), Some(value));
-        assert!(Rc::ptr_eq(&var.meta(), &new_meta));
+        // Both should be Some with the same Rc pointer
+        if let (Some(var_rc), Some(new_rc)) = (var.meta(), new_meta) {
+            assert!(Rc::ptr_eq(&var_rc, &new_rc));
+        } else {
+            panic!("Expected both to be Some");
+        }
     }
 
     #[test]
@@ -571,7 +580,12 @@ mod tests {
         let new_meta = MetaOps::assoc(&var, key.clone(), value.clone());
         
         assert_eq!(MetaOps::get(&var, &key), Some(value));
-        assert!(Rc::ptr_eq(&var.meta(), &new_meta));
+        // Both should be Some with the same Rc pointer
+        if let (Some(var_rc), Some(new_rc)) = (var.meta(), new_meta) {
+            assert!(Rc::ptr_eq(&var_rc, &new_rc));
+        } else {
+            panic!("Expected both to be Some");
+        }
     }
 
     #[test]
@@ -620,7 +634,11 @@ mod tests {
         // Extract the metadata from Value::Var
         if let Value::Var(_, meta) = value_var {
             // The wrapper's metadata should be the same Rc pointer as var.meta()
-            assert!(Rc::ptr_eq(&meta, &var.meta()));
+            if let (Some(meta_rc), Some(var_meta_rc)) = (meta, var.meta()) {
+                assert!(Rc::ptr_eq(&meta_rc, &var_meta_rc));
+            } else {
+                panic!("Expected both to be Some");
+            }
         } else {
             panic!("Expected Value::Var variant");
         }

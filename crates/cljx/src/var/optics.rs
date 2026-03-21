@@ -1,10 +1,10 @@
 use std::rc::Rc;
 use crate::prelude::*;
 
-/// Extract metadata from a Var, returning a clone of the Rc pointer.
+/// Extract metadata from a Var, returning a clone of the metadata.
 /// 
 /// This returns the Var's own metadata, independent from any Value wrapper's metadata.
-pub fn meta(var: &Var) -> Rc<Option<Map>> {
+pub fn meta(var: &Var) -> Option<Rc<Map>> {
     var.meta()
 }
 
@@ -12,13 +12,13 @@ pub fn meta(var: &Var) -> Rc<Option<Map>> {
 /// 
 /// Returns Some(Map) if metadata exists, None otherwise.
 pub fn view_meta(var: &Var) -> Option<Map> {
-    var.meta().as_ref().clone()
+    var.meta().as_ref().map(|rc_map| (**rc_map).clone())
 }
 
 /// Replace the Var's entire metadata in-place.
 /// 
 /// This mutates the Var's metadata directly via the RefCell.
-pub fn set_meta(var: &Var, meta: Rc<Option<Map>>) {
+pub fn set_meta(var: &Var, meta: Option<Rc<Map>>) {
     var.set_meta(meta)
 }
 
@@ -59,7 +59,7 @@ mod tests {
         let value = Rc::new(Value::string("metadata".to_string()));
         let mut new_map = Map::new_empty();
         new_map.insert(key.clone(), value.clone());
-        let new_meta = meta::new_rc(new_map);
+        let new_meta = Some(Rc::new(new_map));
 
         // Use optics to set
         set_meta(&var, new_meta);
@@ -180,7 +180,7 @@ mod tests {
         map.insert(key1.clone(), value1.clone());
         map.insert(key2.clone(), value2.clone());
 
-        set_meta(&var, meta::new_rc(map));
+        set_meta(&var, Some(Rc::new(map)));
 
         // Get via optics
         assert_eq!(var.get_meta(&key1), Some(value1));

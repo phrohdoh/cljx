@@ -1,11 +1,10 @@
 use std::{env, io::{self}, rc::Rc};
-// use cljx::{BufReadHandle, Environment, Function, FunctionArity, GetValueError, GetVarError, Handle, IFunction as _, IHandle, List, Map, Namespace, RcEnvironment, RcNamespace, RcValue, RcVar, Symbol, SymbolQualified, SymbolUnqualified, Value, WriteHandle, list_optics, read_one, read_one_v2, value_optics};
 use cljx::prelude::*;
 
 use opentelemetry::{global, trace::TracerProvider as _};
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{trace::SdkTracerProvider, Resource};
-use tracing::{self as log, trace, debug, info, warn, error, span, Level};
+use tracing::{self as log, Level};
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -379,13 +378,8 @@ fn create_env() -> RcEnvironment {
                             ])),
                         ]);
                         new_kv
-                        //let (new_kv, _) = new_kv.try_as_vector().expect(&format!("map function must return a vector of [k v] pairs when mapping over a map, but got: {:?}", new_kv));
-                        //let new_k = new_kv[0].to_owned();
-                        //let new_v = new_kv[1].to_owned();
-                        //(new_k, new_v)
                     })
                     .collect::<Vec<_>>()
-                    //.collect::<Vec<(_, _)>>()
                 ),
                     _ => panic!("map expects a list, vector, set, or map as the second argument, but got: {:?}", coll),
                 }
@@ -577,8 +571,8 @@ fn create_env() -> RcEnvironment {
         vec![(
             FunctionArity::AtLeast(1),
             Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                let (ns_sym, _) = args.first().expect("ns-map requires at least one argument: the namespace to map")
-                    .try_as_symbol().expect("ns-map first argument must be a symbol naming the namespace to map");
+                let ns_sym = value::optics::view_symbol(args.first().expect("ns-map requires at least one argument: the namespace to map").as_ref())
+                    .expect("ns-map first argument must be a symbol naming the namespace to map");
                 let ns = env.get_namespace_or_panic(ns_sym.name());
                 Rc::new(Value::map_from(
                     ns.entries().into_iter()
@@ -597,13 +591,16 @@ fn create_env() -> RcEnvironment {
         vec![(
             FunctionArity::AtLeast(1),
             Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                let (ns_sym, _) = args.first().expect("ns-map requires at least one argument: the namespace to map")
-                    .try_as_symbol().expect("ns-map first argument must be a symbol naming the namespace to map");
-                let ns = env.get_namespace_or_panic(ns_sym.name());
+                let ns_name_symbol = args.first()
+                    .expect("ns-map requires at least one argument: an unqualified symbol naming the namespace to introspect");
+                let ns_name_symbol = value::optics::view_symbol(ns_name_symbol.as_ref())
+                    .expect("ns-map's argument must be an unqualified symbol naming the namespace to introspect");
+                let ns_name = ns_name_symbol.name();
+                let ns = env.get_namespace_or_panic(ns_name);
                 Rc::new(Value::map_from(
                     ns.entries().into_iter()
                       .map(|(sym_name, var)| (
-                        Rc::new(Value::symbol_qualified(ns_sym.name(), &sym_name)),
+                        Rc::new(Value::symbol_qualified(ns_name, &sym_name)),
                         match var.deref() {
                             Some(value) => value.clone(),
                             None => Value::var(var.clone()).into(),
@@ -638,7 +635,7 @@ fn create_env() -> RcEnvironment {
                 let value = args.next().unwrap();
                 let meta = args.next().unwrap();
                 let meta = value::optics::view_map(meta.as_ref()).expect("with-meta meta argument must be a map");
-                value.with_meta_rc(meta::new_rc(meta))
+                value.with_meta_rc(Some(Rc::new(meta)))
             }),
         )],
     );
@@ -768,7 +765,7 @@ fn create_env() -> RcEnvironment {
                         Value::Nil(_) => {
                             let mut map = Map::new_empty();
                             map.insert(nil_key, v);
-                            Rc::new(Value::Map(map, meta::new_rc(Map::new_empty())))
+                            Rc::new(Value::Map(map, None))
                         }
                         Value::Map(map, meta) => {
                             let mut new_map = map.clone();
@@ -806,7 +803,7 @@ fn create_env() -> RcEnvironment {
                                 let nested = assoc_in_recursive(empty_map, rest_keys, v);
                                 let mut result_map = Map::new_empty();
                                 result_map.insert(first_key, nested);
-                                Rc::new(Value::Map(result_map, meta::new_rc(Map::new_empty())))
+                                Rc::new(Value::Map(result_map, None))
                             }
                             Value::Map(map, meta) => {
                                 let current = map.get_or_nil(&first_key);
@@ -1035,33 +1032,85 @@ fn demo_optics(
 ) {
     let env = create_env();
     let clojure_core = env.get_namespace_or_panic("clojure.core");
-    for (input, source, expected) in vec![
-        ("[:foo :bar [:baz [:qux]]]", "(get-in *input* [0])",     ":foo"),
-        ("[:foo :bar [:baz [:qux]]]", "(get-in *input* [2])",     "[:baz [:qux]]"),
-        ("[:foo :bar [:baz [:qux]]]", "(get-in *input* [2 0])",   ":baz"),
-        ("[:foo :bar [:baz [:qux]]]", "(get-in *input* [2 1])",   "[:qux]"),
-        ("[:foo :bar [:baz [:qux]]]", "(get-in *input* [2 1 0])", ":qux"),
+    for (test_input, test_expr, expected) in vec![
+        ("[:foo :bar [:baz [:qux]]]", "(get-in *test-input* [0])",     ":foo"),
+        ("[:foo :bar [:baz [:qux]]]", "(get-in *test-input* [2])",     "[:baz [:qux]]"),
+        ("[:foo :bar [:baz [:qux]]]", "(get-in *test-input* [2 0])",   ":baz"),
+        ("[:foo :bar [:baz [:qux]]]", "(get-in *test-input* [2 1])",   "[:qux]"),
+        ("[:foo :bar [:baz [:qux]]]", "(get-in *test-input* [2 1 0])", ":qux"),
     ] {
-        let input = read_one_v2(env.clone(), input).unwrap().1.unwrap();
-        let source = read_one_v2(env.clone(), source).unwrap().1.unwrap();
+        let test_input = read_one_v2(env.clone(), test_input).unwrap().1.unwrap();
+        let test_expr = read_one_v2(env.clone(), test_expr).unwrap().1.unwrap();
         let expected = read_one_v2(env.clone(), expected).unwrap().1.unwrap();
-        clojure_core.bind_value_rc("*input*", input.clone());
+        clojure_core.bind_value_rc("*test-input*", test_input.clone());
         let ret = clojure_core.get_function_or_panic("eval")
-            .invoke(env.clone(), vec![source.clone()]);
+            .invoke(env.clone(), vec![test_expr.clone()]);
         use value::optics::meta_ref;
-        if let Some(input_meta) = meta_ref(input.as_ref()).as_ref() {
-            println!("(meta input) ;; => {}", input_meta);
+
+        println!();
+        println!(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        println!();
+
+        println!("*test-input* ;; => {test_input}");
+        match meta_ref(&test_input).as_ref() {
+            Some(meta) => println!("(meta *test-input*) ;; => {meta}"),
+            None       => println!("(meta *test-input*) ;; => nil"),
         }
-        if let Some(source_meta) = meta_ref(source.as_ref()).as_ref() {
-            println!("(meta source) ;; => {}", source_meta);
+
+        // match input.as_ref() {
+        //     Value::List(input, _) => {
+        //         for (idx, value) in input.iter().enumerate() {
+        //             println!("(get-in *test-input* [{idx}]) ;; => {value}");
+        //             match meta_ref(&value).as_ref() {
+        //                 Some(meta) => println!("(meta (get-in *test-input* [{idx}])) ;; => {meta}"),
+        //                 None       => println!("(meta (get-in *test-input* [{idx}])) ;; => nil"),
+        //             }
+        //         }
+        //     },
+        //     Value::Vector(input, _) => {
+        //         for (idx, value) in input.iter().enumerate() {
+        //             println!("(get-in *test-input* [{idx}]) ;; => {value}");
+        //             match meta_ref(&value).as_ref() {
+        //                 Some(meta) => println!("(meta (get-in *test-input* [{idx}])) ;; => {meta}"),
+        //                 None       => println!("(meta (get-in *test-input* [{idx}])) ;; => nil"),
+        //             }
+        //         }
+        //     },
+        //     _ => {},
+        // }
+
+        println!();
+
+        println!("*test-expr* ;; => {test_expr}");
+        match meta_ref(&test_expr).as_ref() {
+            Some(meta) => println!("(meta *test-expr*) ;; => {meta}"),
+            None       => println!("(meta *test-expr*) ;; => nil"),
         }
-        if let Some(expected_meta) = meta_ref(expected.as_ref()).as_ref() {
-            println!("(meta expected) ;; => {}", expected_meta);
+
+        println!();
+
+        println!("expected ;; => {expected}");
+        match meta_ref(&expected).as_ref() {
+            Some(meta) => println!("(meta expected) ;; => {meta}"),
+            None       => println!("(meta expected) ;; => nil"),
         }
-        if let Some(ret_meta) = meta_ref(ret.as_ref()).as_ref() {
-            println!("(meta ret) ;; => {}", ret_meta);
+
+        println!();
+
+        println!("ret ;; => {ret}");
+        match meta_ref(&ret).as_ref() {
+            Some(meta) => println!("(meta ret) ;; => {meta}"),
+            None       => println!("(meta ret) ;; => nil"),
         }
-        println!("(let [*input* {input}] {source}) ;; => (assert= {ret} {expected})");
+
+        println!();
+        println!(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
+        println!();
+
+        // println!("(let [**est-input* {input}] {test-source}) ;; => (assert= {ret} {expected})");
+
+        // println!("");
+
         assert_eq!(ret, expected);
     }
 
@@ -1233,9 +1282,9 @@ impl PendingInput {
         Self { buf: String::new() }
     }
 
-    pub fn new(buf: String) -> Self {
-        Self { buf }
-    }
+    //pub fn new(buf: String) -> Self {
+    //    Self { buf }
+    //}
 
     pub fn push(&mut self, line: &str) {
         self.buf += line;
@@ -1245,9 +1294,9 @@ impl PendingInput {
         self.buf = String::new();
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
-    }
+    //pub fn is_empty(&self) -> bool {
+    //    self.buf.is_empty()
+    //}
 
     pub fn accumulated_input(&self) -> &str {
         self.buf.as_str()

@@ -2,7 +2,7 @@ use std::rc::Rc;
 use crate::prelude::*;
 
 /// Helper: extract metadata from any Value, preserving it across transformations.
-pub fn meta(value: &Value) -> Rc<Option<Map>> {
+pub fn meta(value: &Value) -> Option<Rc<Map>> {
     match value {
         Value::Nil(m) => m.clone(),
         Value::Boolean(_, m) => m.clone(),
@@ -21,34 +21,34 @@ pub fn meta(value: &Value) -> Rc<Option<Map>> {
     }
 }
 
-pub fn meta_ref(value: &Value) -> &Option<Map> {
+pub fn meta_ref(value: &Value) -> &Option<Rc<Map>> {
     match value {
-        Value::Nil(m) => m.as_ref(),
-        Value::Boolean(_, m) => m.as_ref(),
-        Value::Integer(_, m) => m.as_ref(),
-        Value::Float(_, m) => m.as_ref(),
-        Value::String(_, m) => m.as_ref(),
-        Value::Symbol(_, m) => m.as_ref(),
-        Value::Keyword(_, m) => m.as_ref(),
-        Value::List(_, m) => m.as_ref(),
-        Value::Vector(_, m) => m.as_ref(),
-        Value::Set(_, m) => m.as_ref(),
-        Value::Map(_, m) => m.as_ref(),
-        Value::Var(_, m) => m.as_ref(),
-        Value::Function(_, m) => m.as_ref(),
-        Value::Handle(_, m) => m.as_ref(),
+        Value::Nil(m) => m,
+        Value::Boolean(_, m) => m,
+        Value::Integer(_, m) => m,
+        Value::Float(_, m) => m,
+        Value::String(_, m) => m,
+        Value::Symbol(_, m) => m,
+        Value::Keyword(_, m) => m,
+        Value::List(_, m) => m,
+        Value::Vector(_, m) => m,
+        Value::Set(_, m) => m,
+        Value::Map(_, m) => m,
+        Value::Var(_, m) => m,
+        Value::Function(_, m) => m,
+        Value::Handle(_, m) => m,
     }
 }
 
 pub fn view_meta(value: &Value) -> Option<Map> {
-    meta_ref(value).as_ref().cloned()
+    meta(value).as_ref().map(|rc_map| (**rc_map).clone())
 }
 
-pub fn view_meta_map_ref(value: &Value) -> Option<&Map> {
-    meta_ref(value).as_ref()
+pub fn view_meta_ref(value: &Value) -> Option<&Map> {
+    meta_ref(value).as_ref().and_then(|rc_map| Some(rc_map.as_ref()))
 }
 
-pub fn set_meta(value: &Value, meta: Rc<Option<Map>>) -> RcValue {
+pub fn set_meta(value: &Value, meta: Option<Rc<Map>>) -> RcValue {
     value.with_meta_rc(meta)
 }
 
