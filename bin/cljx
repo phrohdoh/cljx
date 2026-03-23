@@ -81,7 +81,7 @@ crates:
     test_shell_cmd: ${{ .alias.cargo_test_crate }} ${{ .crates.cljx.manifest_path }}
     run_shell_cmd: ${{ .alias.cargo_run_crate }} ${{ .crates.cljx.manifest_path }}
 
-flows:
+tasks:
 - id: help
   if: |-
     (or (nil? *command-line-args*)
@@ -93,30 +93,32 @@ flows:
   docs: |-
     # The `${{ ctx.script_name }}` script:
 
-    This script's purpose is to make it easy to create and run various commands
-    ("flow"s) in the repository/project/etc that you are using it in.
+    This script is a task runner.
+    It is designed to be extended by the user for that specific project.
+    You may want to copy this file into the root, `{root}/bin`, etc.
 
     In this instance, it extends the functionality of a native CLI binary.
 
-    That native binary can do 2 things:
+    That native binary can do a few things:
     - display it's help
     - put the user into a REPL session
+    - read a string
+    - evaluate a string
+    - evaluate a file
 
-    It alone cannot, for example, read and evaluate a string or file.
-
-    This script uses the shell's features to make both of those possible
-    without requiring any changes to (and thus recompilations of) the
-    underlying native code.
+    This script uses the shell's features to make additional functionality
+    available to the user in a way that is discoverable, without requiring any
+    changes to (and thus recompilations of) the underlying native code.
 
     # Getting help for `${{ ctx.script_name }}`:
     ```shell
     ${{ ctx.script_name }} --help
-    ${{ ctx.script_name }} <flow-id> --help
+    ${{ ctx.script_name }} <task-id> --help
     ```
 
-    # Print flow-ids, one per line:
+    # Print task-ids, one per line:
     ```shell
-    ${{ ctx.script_name }} print-flow-ids
+    ${{ ctx.script_name }} print-task-ids
     ```
 
 - id: print-spec-yaml
@@ -126,7 +128,8 @@ flows:
   forward_args_skip: 1
   docs: |-
     # Purpose of `${{ ctx.script_name }} print-spec-yaml`:
-    Print the flows specification in YAML format for user reference and/or programmatic consumption.
+    Print the tasks specification in YAML format for user reference and/or
+    programmatic consumption.
 
     # Examples for `${{ ctx.script_name }} print-spec-yaml`:
     ```shell
@@ -142,7 +145,8 @@ flows:
   forward_args_skip: 1
   docs: |-
     # Purpose of `${{ ctx.script_name }} print-spec-json`:
-    Print the flows specification in JSON format for user reference and/or programmatic consumption.
+    Print the tasks specification in JSON format for user reference and/or
+    programmatic consumption.
 
     # Examples for `${{ ctx.script_name }} print-spec-json`:
     ```shell
@@ -151,20 +155,20 @@ flows:
     ${{ ctx.script_name }} print-spec-json --raw
     ```
 
-- id: print-flow-ids
+- id: print-task-ids
   if: |-
-    (-> *command-line-args* (some-> first) (= "print-flow-ids"))
-  shell_cmd: ${{ ctx.script_call }} print-spec-yaml | yq -p=yaml -r '.flows[].id'
+    (-> *command-line-args* (some-> first) (= "print-task-ids"))
+  shell_cmd: ${{ ctx.script_call }} print-spec-yaml | yq -p=yaml -r '.tasks[].id'
   forward_args: true
   forward_args_skip: 1
   docs: |-
-    # Purpose of `${{ ctx.script_name }} print-flow-ids`:
-    Print flow-ids, one per line, for user reference and/or programmatic consumption.
+    # Purpose of `${{ ctx.script_name }} print-task-ids`:
+    Print task-ids, one per line, for user reference and/or programmatic consumption.
 
-    # Examples for `${{ ctx.script_name }} print-flow-ids`:
+    # Examples for `${{ ctx.script_name }} print-task-ids`:
     ```shell
-    ${{ ctx.script_name }} print-flow-ids --help
-    ${{ ctx.script_name }} print-flow-ids
+    ${{ ctx.script_name }} print-task-ids --help
+    ${{ ctx.script_name }} print-task-ids
     ```
 
 - id: create-crates
@@ -314,7 +318,8 @@ flows:
   forward_args_skip: 1
   docs: |-
     # Purpose of `${{ ctx.script_name }} repl`:
-    Enter into a Read-Eval-Print Loop (REPL) for interactive evaluation of source code (EDN/CLJ forms).
+    Enter into a Read-Eval-Print Loop (REPL) for interactive evaluation of
+    source code (EDN/CLJ forms).
 
 - id: optics
   if: |-
@@ -322,6 +327,10 @@ flows:
   shell_cmd: ${{ spec.crates.cljx_cli.run_shell_cmd }} optics
   forward_args: true
   forward_args_skip: 1
+  docs: |-
+    # Purpose of `${{ ctx.script_name }} optics`:
+    Run the `optics` demonstration, which showcases the use of optics (lenses,
+    prisms, traversals) for immutable data structure manipulation in Rust.
 
 EOF
 
@@ -410,7 +419,7 @@ function expr:eval() {
   local tpl="$1"
   local ctx_json="$2"
   local spec_json="$3"
-  local flow_json="$4"
+  local task_json="$4"
 
   # Match any expressions of the form ${{ ... }} (nesting not supported)
   local re='\${{[[:space:]]*([^}]+)[[:space:]]*}}'
@@ -440,10 +449,10 @@ function expr:eval() {
       path="${expr#.}"
       jq_filter=".$path // empty"
       value="$(jq -r "$jq_filter" <<< "$spec_json" || printf '')"
-    elif [[ $expr =~ ^flow\. ]]; then
-      path="${expr#flow.}"
+    elif [[ $expr =~ ^task\. ]]; then
+      path="${expr#task.}"
       jq_filter=".$path // empty"
-      value="$(jq -r "$jq_filter" <<< "$flow_json" || printf '')"
+      value="$(jq -r "$jq_filter" <<< "$task_json" || printf '')"
     fi
 
     # elogln "[expr:eval] replacing '${full}' with '${value}'"
@@ -453,55 +462,55 @@ function expr:eval() {
 }
 
 
-function flow.id()                     { yq -p=json -r '.id                     // ""'    <<< "$1"; }
-#function flow.tldr()                   { yq -p=json -r '.tldr                   // ""'    <<< "$1"; }
-function flow.docs()                   { yq -p=json -r '.docs                   // ""'    <<< "$1"; }
-function flow.if()                     { yq -p=json -r '.if                     // false' <<< "$1"; }
-function flow.script_fn()              { yq -p=json -r '.script_fn              // ""'    <<< "$1"; }
-function flow.shell_cmd()              { yq -p=json -r '.shell_cmd              // ""'    <<< "$1"; }
-function flow.forward_args()           { yq -p=json -r '.forward_args           // false' <<< "$1"; }
-function flow.forward_args.skip()      { yq -p=json -r '.forward_args_skip      // 0'     <<< "$1"; }
-#function flow.hooks.before.shell_cmd() { yq -p=json -r '.hooks.before.shell_cmd // ""'    <<< "$1"; }
-#function flow.hooks.before.script_fn() { yq -p=json -r '.hooks.before.script_fn // ""'    <<< "$1"; }
-#function flow.hooks.after.shell_cmd()  { yq -p=json -r '.hooks.after.shell_cmd  // ""'    <<< "$1"; }
-#function flow.hooks.after.script_fn()  { yq -p=json -r '.hooks.after.script_fn  // ""'    <<< "$1"; }
+function task.id()                     { yq -p=json -r '.id                     // ""'    <<< "$1"; }
+#function task.tldr()                   { yq -p=json -r '.tldr                   // ""'    <<< "$1"; }
+function task.docs()                   { yq -p=json -r '.docs                   // ""'    <<< "$1"; }
+function task.if()                     { yq -p=json -r '.if                     // false' <<< "$1"; }
+function task.script_fn()              { yq -p=json -r '.script_fn              // ""'    <<< "$1"; }
+function task.shell_cmd()              { yq -p=json -r '.shell_cmd              // ""'    <<< "$1"; }
+function task.forward_args()           { yq -p=json -r '.forward_args           // false' <<< "$1"; }
+function task.forward_args.skip()      { yq -p=json -r '.forward_args_skip      // 0'     <<< "$1"; }
+#function task.hooks.before.shell_cmd() { yq -p=json -r '.hooks.before.shell_cmd // ""'    <<< "$1"; }
+#function task.hooks.before.script_fn() { yq -p=json -r '.hooks.before.script_fn // ""'    <<< "$1"; }
+#function task.hooks.after.shell_cmd()  { yq -p=json -r '.hooks.after.shell_cmd  // ""'    <<< "$1"; }
+#function task.hooks.after.script_fn()  { yq -p=json -r '.hooks.after.script_fn  // ""'    <<< "$1"; }
 
 
-function flow_json_by_id() {
+function task_json_by_id() {
   local spec_json="$1"
-  [[ -z "${spec_json}" ]] && { elogln 'you must provide the spec-json to find the flow within'; return 1; }
-  local flow_id="$2"
-  [[ -z "${flow_id}" ]] && { elogln 'you must provide a flow-id'; return 1; }
-  local flow_json="$(jq -r -c --arg flow_id "${flow_id}" '.flows[] | select(.id == $flow_id)' <<< "$spec_json")"
-  #local flow_json="$(yq -p=json -o=json -r ".flows[] | select(.id == \"${flow_id}\")" <<< "$spec_json")"
-  if [[ -z "${flow_json}" || "${flow_json}" == "null" ]]; then
+  [[ -z "${spec_json}" ]] && { elogln 'you must provide the spec-json to find the task within'; return 1; }
+  local task_id="$2"
+  [[ -z "${task_id}" ]] && { elogln 'you must provide a task-id'; return 1; }
+  local task_json="$(jq -r -c --arg task_id "${task_id}" '.tasks[] | select(.id == $task_id)' <<< "$spec_json")"
+  #local task_json="$(yq -p=json -o=json -r ".tasks[] | select(.id == \"${task_id}\")" <<< "$spec_json")"
+  if [[ -z "${task_json}" || "${task_json}" == "null" ]]; then
     # support `hello-world` in addition to `hello_world`
-    flow_json="$(yq -p=json -o=json ".flows[] | select(.id == \"${flow_id//-/_}\")" <<< "$spec_json")"
+    task_json="$(yq -p=json -o=json ".tasks[] | select(.id == \"${task_id//-/_}\")" <<< "$spec_json")"
   fi
-  if [[ -z "${flow_json}" || "${flow_json}" == "null" ]]; then
-    elogln "no flow found for id '${flow_id}'"
+  if [[ -z "${task_json}" || "${task_json}" == "null" ]]; then
+    elogln "no task found for id '${task_id}'"
     return 1
   else
-    println "${flow_json}"
+    println "${task_json}"
   fi
 }
 
-function flow:eval_if() {
+function task:eval_if() {
   local if_expr="$1"
   shift
   if [[ "$if_expr" == 'false' ]]; then
-    #elogln 'Information: The flow.if is explicitly set to false'
+    #elogln 'Information: The task.if is explicitly set to false'
     return 1
   fi
   local if_ret
   if [[ $# -eq 0 ]]; then
-    #elogln 'Information: Evaluating flow.if without arguments'
+    #elogln 'Information: Evaluating task.if without arguments'
     if_ret="$(bb -e "$if_expr")"
   elif [[ $# -gt 0 ]]; then
-    #elogln 'Information: Evaluating flow.if with arguments'
+    #elogln 'Information: Evaluating task.if with arguments'
     if_ret="$(bb -e "$if_expr" -- "${@}")"
   else
-    #elogln 'Information: No flow.if to evaluate, defaulting to false'
+    #elogln 'Information: No task.if to evaluate, defaulting to false'
     return 1
   fi
   if [[ "$if_ret" == "true" ]]; then
@@ -545,16 +554,16 @@ function print_docs() {
 
 function _print_docs() {
   local spec_json="$1"
-  local target_flow_id="$2"
-  local target_flow_json="$(flow_json_by_id "$spec_json" "$target_flow_id")"
-  if [[ -z "$target_flow_json" || "$target_flow_json" == "null" ]]; then
-    elogln "no flow found for id '$target_flow_id'"
+  local target_task_id="$2"
+  local target_task_json="$(task_json_by_id "$spec_json" "$target_task_id")"
+  if [[ -z "$target_task_json" || "$target_task_json" == "null" ]]; then
+    elogln "no task found for id '$target_task_id'"
     return 1
   fi
-  local docs="$(flow.docs "$target_flow_json")"
+  local docs="$(task.docs "$target_task_json")"
   local ret=0
   if [[ -z "$docs" ]]; then
-    elogln "no documentation found for flow '${target_flow_id}'"
+    elogln "no documentation found for task '${target_task_id}'"
     ret=1
   else
     #println "$docs" | glow - | sed 's/\x1b\[[0-9;]*m//g'
@@ -568,12 +577,12 @@ function help() {
   if [[ $# -eq 0 ]]; then
     _print_docs "${GLOBALS[spec_json]}" help
   elif [[ "$1" == '--all' || "$1" == '-a' ]]; then
-    readarray -t flow_keys <<< "$(jq -r -c '.flows | keys[]' <<< "${GLOBALS[spec_json]}")"
-    for flow_key in "${flow_keys[@]}"; do
+    readarray -t task_keys <<< "$(jq -r -c '.tasks | keys[]' <<< "${GLOBALS[spec_json]}")"
+    for task_key in "${task_keys[@]}"; do
       println '################################################################################'
-      local flow_json="$(jq -r -c --argjson flow_key "$flow_key" '.flows[$flow_key]' <<< "${GLOBALS[spec_json]}")"
-      local flow_id="$(flow.id "$flow_json")"
-      _print_docs "${GLOBALS[spec_json]}" "$flow_id"
+      local task_json="$(jq -r -c --argjson task_key "$task_key" '.tasks[$task_key]' <<< "${GLOBALS[spec_json]}")"
+      local task_id="$(task.id "$task_json")"
+      _print_docs "${GLOBALS[spec_json]}" "$task_id"
       println '################################################################################'
     done
   elif [[ "$1" == '--help' || "$1" == '-h' ]]; then
@@ -724,7 +733,8 @@ function test_crates() {
   local crate_dirs=("$explicitly_given_crate_dirs")
   if [[ "$all_crates" == 'true' ]]; then
     readarray -t crate_dirs <<< "$(ls "${root_dir}/crates")"
-    crate_dirs=("$root_dir" "${crate_dirs[@]}")
+    # crate_dirs=("$root_dir" "${crate_dirs[@]}")
+    crate_dirs=("${crate_dirs[@]}")
   fi
 
   for i in "${!crate_dirs[@]}"; do
@@ -820,14 +830,14 @@ function main() {
   spec_json="$(expr:eval "$spec_json" "$ctx_json" "$spec_json")"
 
   # readarray -t aliases_keys <<< "$(jq -r -c '.aliases | keys[]' <<< "$spec_json")"
-  readarray -t flow_keys <<< "$(jq -r -c '.flows | keys[]' <<< "$spec_json")"
+  readarray -t task_keys <<< "$(jq -r -c '.tasks | keys[]' <<< "$spec_json")"
 
   #spec_json="$(
-  #  local new_flows_json="[]";
-  #  for flow_key in "${flow_keys[@]}"; do
-  #    local flow_json="$(jq -r -c --argjson flow_key "$flow_key" '.flows[$flow_key]' <<< "$spec_json")"
-  #    local new_flow_json="$(expr:eval "$flow_json" "$ctx_json" "$spec_json" "$flow_json")"
-  #    new_flows_json="$(jq -r -c --argjson new_flow "$new_flow_json" '.+[$new_flow]' <<< "$new_flows_json")"
+  #  local new_tasks_json="[]";
+  #  for task_key in "${task_keys[@]}"; do
+  #    local task_json="$(jq -r -c --argjson task_key "$task_key" '.tasks[$task_key]' <<< "$spec_json")"
+  #    local new_task_json="$(expr:eval "$task_json" "$ctx_json" "$spec_json" "$task_json")"
+  #    new_tasks_json="$(jq -r -c --argjson new_task "$new_task_json" '.+[$new_task]' <<< "$new_tasks_json")"
   #  done;
   #
   #  local new_aliases_json="{}";
@@ -839,104 +849,104 @@ function main() {
   #
   #  jq -r \
   #     -c \
-  #     --argjson new_flows "$new_flows_json" \
+  #     --argjson new_tasks "$new_tasks_json" \
   #     --argjson new_aliases "$new_aliases_json" \
-  #     '.flows=$new_flows | .aliases=$new_aliases' \
+  #     '.tasks=$new_tasks | .aliases=$new_aliases' \
   #     <<< "$spec_json";
   #)"
 
   GLOBALS['spec_json']="$spec_json"
 
-  for flow_key in "${flow_keys[@]}"; do
-    local flow_json="$(jq -r -c --argjson flow_key "$flow_key" '.flows[$flow_key]' <<< "$spec_json")"
-    local flow_id="$(jq -r -c '.id' <<< "$flow_json")"
-    local flow_if="$(jq -r -c '.if // false' <<< "$flow_json")"
+  for task_key in "${task_keys[@]}"; do
+    local task_json="$(jq -r -c --argjson task_key "$task_key" '.tasks[$task_key]' <<< "$spec_json")"
+    local task_id="$(jq -r -c '.id' <<< "$task_json")"
+    local task_if="$(jq -r -c '.if // false' <<< "$task_json")"
 
-    #elogln "$(printf "Question: Shall we execute flow '%s'?" "$flow_id")"
-    if ! flow:eval_if "$flow_if" "${@}"; then
-      #elogln "$(printf "Decision: No, we shall not execute flow '%s'." "$flow_id")"
+    #elogln "$(printf "Question: Shall we execute task '%s'?" "$task_id")"
+    if ! task:eval_if "$task_if" "${@}"; then
+      #elogln "$(printf "Decision: No, we shall not execute task '%s'." "$task_id")"
       #elogln ''
       continue
     fi
-    #elogln "$(printf "Decision: Yes, we shall execute flow '%s'." "$flow_id")"
+    #elogln "$(printf "Decision: Yes, we shall execute task '%s'." "$task_id")"
     #elogln ''
 
-    GLOBALS['flow_json']="$flow_json"
-    GLOBALS['flow.id']="$flow_id"
-    GLOBALS['flow.if']="$flow_if"
-    GLOBALS['flow.docs']="$(              jq -r -c '.docs              // ""'    <<< "$flow_json")"
-    GLOBALS['flow.working_dir']="$(       jq -r -c '.working_dir       // ""'    <<< "$flow_json")"
-    GLOBALS['flow.script_fn']="$(         jq -r -c '.script_fn         // ""'    <<< "$flow_json")"
-    GLOBALS['flow.shell_cmd']="$(         jq -r -c '.shell_cmd         // ""'    <<< "$flow_json")"
-    GLOBALS['flow.forward_args']="$(      jq -r -c '.forward_args      // false' <<< "$flow_json")"
-    GLOBALS['flow.forward_args.skip']="$( jq -r -c '.forward_args_skip // 0'     <<< "$flow_json")"
+    GLOBALS['task_json']="$task_json"
+    GLOBALS['task.id']="$task_id"
+    GLOBALS['task.if']="$task_if"
+    GLOBALS['task.docs']="$(              jq -r -c '.docs              // ""'    <<< "$task_json")"
+    GLOBALS['task.working_dir']="$(       jq -r -c '.working_dir       // ""'    <<< "$task_json")"
+    GLOBALS['task.script_fn']="$(         jq -r -c '.script_fn         // ""'    <<< "$task_json")"
+    GLOBALS['task.shell_cmd']="$(         jq -r -c '.shell_cmd         // ""'    <<< "$task_json")"
+    GLOBALS['task.forward_args']="$(      jq -r -c '.forward_args      // false' <<< "$task_json")"
+    GLOBALS['task.forward_args.skip']="$( jq -r -c '.forward_args_skip // 0'     <<< "$task_json")"
 
     local args=()
-    if [[ "${GLOBALS[flow.forward_args]}" == 'true' ]]; then
-      local args_start_idx=$(( ${GLOBALS['flow.forward_args.skip']} + 1 ))
+    if [[ "${GLOBALS[task.forward_args]}" == 'true' ]]; then
+      local args_start_idx=$(( ${GLOBALS['task.forward_args.skip']} + 1 ))
       args=("${@:${args_start_idx}}")
     fi
-    #elogln '%s' "$(printf "flow '%s' args (%s):" "$flow_id" "${#args[@]}")"
+    #elogln '%s' "$(printf "task '%s' args (%s):" "$task_id" "${#args[@]}")"
     #for arg in "${args[@]}"; do
     #  elogln "  arg: '%s'" "${arg}"
     #done
 
-    local flow_env=()
+    local task_env=()
     while IFS= read -r entry; do
       local key val
       key="$(jq -r '.key'   <<< "$entry")"
       val="$(jq -r '.value' <<< "$entry")"
-      [[ -n "$key" && -n "$val" ]] && flow_env+=("${key}=${val}")
-    done < <(jq -c '.env // {} | to_entries[]' <<< "$flow_json")
-    #elogln '%s' "$(printf "flow '%s' env vars (%s):" "$flow_id" "${#flow_env[@]}")"
-    #for kv in "${flow_env[@]}"; do
+      [[ -n "$key" && -n "$val" ]] && task_env+=("${key}=${val}")
+    done < <(jq -c '.env // {} | to_entries[]' <<< "$task_json")
+    #elogln '%s' "$(printf "task '%s' env vars (%s):" "$task_id" "${#task_env[@]}")"
+    #for kv in "${task_env[@]}"; do
     #  elogln "  %s" "${kv}"
     #done
 
-    [[ -n "${GLOBALS['flow.working_dir']}" ]] && pushd "${GLOBALS['flow.working_dir']}" 1>/dev/null
+    [[ -n "${GLOBALS['task.working_dir']}" ]] && pushd "${GLOBALS['task.working_dir']}" 1>/dev/null
 
     local ret=0
-    if [[ -n "${GLOBALS[flow.script_fn]}" ]]; then
+    if [[ -n "${GLOBALS[task.script_fn]}" ]]; then
       (
-        #elogln "exec \$flow.script_fn ${GLOBALS[flow.script_fn]} ${args[@]}"
-        [[ ${#flow_env[@]} -ne 0 ]] && export "${flow_env[*]}"
-        "${GLOBALS[flow.script_fn]}" ${args[@]}
+        #elogln "exec \$task.script_fn ${GLOBALS[task.script_fn]} ${args[@]}"
+        [[ ${#task_env[@]} -ne 0 ]] && export "${task_env[*]}"
+        "${GLOBALS[task.script_fn]}" ${args[@]}
       )
       ret=$?
       #if (( ret != 0 )); then
-      #  : #elogln "$(printf 'fail[%s]: eval %s' "$ret" "${GLOBALS[flow.script_fn]}")"
+      #  : #elogln "$(printf 'fail[%s]: eval %s' "$ret" "${GLOBALS[task.script_fn]}")"
       #fi
-    elif [[ -n "${GLOBALS[flow.shell_cmd]}" ]]; then
+    elif [[ -n "${GLOBALS[task.shell_cmd]}" ]]; then
       (
-        #elogln "exec \$flow.shell_cmd ${GLOBALS[flow.shell_cmd]} ${args[@]}"
-        [[ ${#flow_env[@]} -ne 0 ]] && export "${flow_env[*]}"
-        eval "${GLOBALS[flow.shell_cmd]}" ${args[@]}
+        #elogln "exec \$task.shell_cmd ${GLOBALS[task.shell_cmd]} ${args[@]}"
+        [[ ${#task_env[@]} -ne 0 ]] && export "${task_env[*]}"
+        eval "${GLOBALS[task.shell_cmd]}" ${args[@]}
       )
       ret=$?
       #if (( ret != 0 )); then
-      #  : #elogln 'fail[%s]: eval %s' "$ret" "${GLOBALS[flow.shell_cmd]}"
+      #  : #elogln 'fail[%s]: eval %s' "$ret" "${GLOBALS[task.shell_cmd]}"
       #fi
     else
       ret=1
-      elogln "$(printf "fail[%s]: flow '%s' does not have script_fn nor shell_cmd defined" "$ret" "$flow_id")"
+      elogln "$(printf "fail[%s]: task '%s' does not have script_fn nor shell_cmd defined" "$ret" "$task_id")"
     fi
 
-    [[ -n "${GLOBALS['flow.working_dir']}" ]] && popd 1>/dev/null
+    [[ -n "${GLOBALS['task.working_dir']}" ]] && popd 1>/dev/null
 
     return $ret
   done
 
-  elogln 'Did not find flow to execute.'
+  elogln 'Did not find task to execute.'
   return 1
 
-  #for flow_key in "${flow_keys[@]}"; do
-  #  flow:process "$flow_key" "${@}"
-  #  local flow_process_ret=$?
-  #  case $flow_process_ret in
+  #for task_key in "${task_keys[@]}"; do
+  #  task:process "$task_key" "${@}"
+  #  local task_process_ret=$?
+  #  case $task_process_ret in
   #    (0) return 0; ;; # successful execution to completion, all okay
-  #    (1) continue; ;; # do not exec this flow for the given args
-  #    (2) return 1; ;; # failed execution of flow
-  #    (*) elogln "unexpected exit code from processing flow '${flow_id}': ${flow_process_ret}"; return
+  #    (1) continue; ;; # do not exec this task for the given args
+  #    (2) return 1; ;; # failed execution of task
+  #    (*) elogln "unexpected exit code from processing task '${task_id}': ${task_process_ret}"; return
   #  esac
   #done
 }
