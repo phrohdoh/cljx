@@ -3,54 +3,84 @@ use ::std::rc::Rc;
 use crate::prelude::*;
 
 
-pub fn box_fn(
+/// Wrap a closure into an `RcDynIFunction` with a specified arity.
+///
+/// This is a convenience helper for the common case of wrapping a single
+/// closure as an `IFunction` implementation. Similar to `box_fn`, but returns
+/// `RcDynIFunction` instead of a boxed function pointer.
+///
+/// # Example
+/// ```
+/// # use cljx::prelude::*;
+/// let func = closure_fn(FunctionArity::Exactly(2), |env, args| {
+///     todo!()
+/// });
+/// ```
+pub fn closure_fn(
     arity: FunctionArity,
     func: impl Fn(RcEnvironment, Vec<RcValue>) -> RcValue + 'static,
-) -> (FunctionArity, Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>) {
-    (arity, Box::new(func))
+) -> (FunctionArity, RcDynIFunction) {
+    (arity, Rc::new(func))
 }
 
+/// Build a `Function` from a collection of `IFunction` implementations.
+///
+/// This is the primary way to construct multi-arity functions when you have
+/// custom `IFunction` implementations or need to pass pre-built trait objects.
+///
+/// # Example with closures
+/// ```
+/// # use cljx::prelude::*;
+/// let func = build_function("my-fn", vec![
+///     closure_fn(FunctionArity::Exactly(0), |_env, _args| Value::nil_rc()),
+///     closure_fn(FunctionArity::Exactly(1), |_env, args| args[0].clone()),
+/// ]);
+/// ```
+///
+/// # Example with custom struct
+/// ```
+/// # use ::std::rc::Rc;
+/// # use cljx::prelude::*;
+/// struct MyCustomFn { state: i32 }
+/// impl IFunction for MyCustomFn {
+///     fn invoke(&self, env: RcEnvironment, args: Vec<RcValue>) -> RcValue {
+///         todo!()
+///     }
+/// }
+///
+/// let func = build_function("custom", vec![
+///     (FunctionArity::Exactly(1), Rc::new(MyCustomFn { state: 42 })),
+/// ]);
+/// ```
 pub fn build_function(
     name: &str,
-    arities: Vec<(
-        FunctionArity,
-        Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>,
-    )>,
+    arities: Vec<(FunctionArity, RcDynIFunction)>,
 ) -> Function {
     let mut builder = Function::builder();
     builder.set_name(name.to_owned());
     for (arity, body) in arities {
-        builder.add_body(arity, body);
+        builder.add_ifunction(arity, body);
     }
     builder.build()
 }
 
 pub fn build_function_rc(
     name: &str,
-    arities: Vec<(
-        FunctionArity,
-        Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>,
-    )>,
+    arities: Vec<(FunctionArity, RcDynIFunction)>,
 ) -> RcFunction {
     Rc::new(build_function(name, arities))
 }
 
 pub fn build_function_value(
     name: &str,
-    arities: Vec<(
-        FunctionArity,
-        Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>,
-    )>,
+    arities: Vec<(FunctionArity, RcDynIFunction)>,
 ) -> Value {
     Value::function(build_function_rc(name, arities))
 }
 
 pub fn build_function_value_rc(
     name: &str,
-    arities: Vec<(
-        FunctionArity,
-        Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>,
-    )>,
+    arities: Vec<(FunctionArity, RcDynIFunction)>,
 ) -> RcValue {
     Rc::new(build_function_value(name, arities))
 }
@@ -198,6 +228,10 @@ impl FunctionBuilder {
         self
     }
 
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(|s| s.as_str())
+    }
+
     pub fn add_body<F>(
         &mut self,
         arity: FunctionArity,
@@ -222,6 +256,33 @@ impl FunctionBuilder {
         let rc_func = Rc::new(func);
         let mut new_bodies = self.bodies;
         new_bodies.push((arity, rc_func));
+        Self {
+            name: self.name,
+            bodies: new_bodies,
+        }
+    }
+
+    /// Add an `IFunction` implementation directly as an `RcDynIFunction`.
+    ///
+    /// This method accepts pre-constructed `IFunction` trait objects, enabling
+    /// custom implementations with state or specialized dispatch logic.
+    pub fn add_ifunction(
+        &mut self,
+        arity: FunctionArity,
+        func: RcDynIFunction,
+    ) -> &mut Self {
+        self.bodies.push((arity, func));
+        self
+    }
+
+    /// Add an `IFunction` implementation directly (builder pattern).
+    pub fn with_ifunction(
+        self,
+        arity: FunctionArity,
+        func: RcDynIFunction,
+    ) -> Self {
+        let mut new_bodies = self.bodies;
+        new_bodies.push((arity, func));
         Self {
             name: self.name,
             bodies: new_bodies,

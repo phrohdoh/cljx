@@ -476,13 +476,60 @@ impl Namespace {
         self
     }
 
+    /// Build and bind a function with custom `IFunction` implementations.
+    ///
+    /// This is the primary way to bind multi-arity functions to a namespace.
+    /// It accepts a collection of `(FunctionArity, RcDynIFunction)` pairs,
+    /// allowing you to bind custom `IFunction` implementations, closures,
+    /// or any combination thereof.
+    ///
+    /// ## Example with closures
+    /// ```
+    /// # use cljx::prelude::*;
+    /// # let mut env_builder = Environment::builder();
+    /// # env_builder.set_current_namespace_var("clojure.core", "*ns*");
+    /// # let env = env_builder.build();
+    /// # let ns = env.create_namespace("clojure.core");
+    /// ns.build_and_bind_function(
+    ///     "+",
+    ///     vec![closure_fn(FunctionArity::AtLeast(0), |_env, args| {
+    ///         let mut sum = 0i64;
+    ///         for arg in args {
+    ///             // ... accumulate sum
+    ///         }
+    ///         Value::integer_rc(sum)
+    ///     })],
+    /// );
+    /// ```
+    ///
+    /// ## Example with custom struct
+    /// ```
+    /// # use ::std::cell::RefCell;
+    /// # use ::std::rc::Rc;
+    /// # use cljx::prelude::*;
+    /// struct Counter { state: RefCell<i32> }
+    /// impl IFunction for Counter {
+    ///     fn invoke(&self, env: RcEnvironment, args: Vec<RcValue>) -> RcValue {
+    ///         todo!()
+    ///     }
+    /// }
+    ///
+    /// # let mut env_builder = Environment::builder();
+    /// # env_builder.set_current_namespace_var("clojure.core", "*ns*");
+    /// # let env = env_builder.build();
+    /// # let ns = env.create_namespace("clojure.core");
+    /// ns.build_and_bind_function(
+    ///     "counter",
+    ///     vec![(
+    ///         FunctionArity::AtLeast(0),
+    ///         Rc::new(Counter { state: RefCell::new(0) }),
+    ///     )],
+    /// );
+    /// ```
     pub fn build_and_bind_function(
         &self,
         name: &str,
-        arities: Vec<(
-            FunctionArity,
-            Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>,
-        )>,
+        arities: Vec<(FunctionArity, RcDynIFunction)>,
     ) -> &Self {
         self.bind_function(name, build_function(name, arities))
     }
@@ -490,10 +537,7 @@ impl Namespace {
     pub fn build_and_bind_macro(
         &self,
         name: &str,
-        arities: Vec<(
-            FunctionArity,
-            Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>,
-        )>,
+        arities: Vec<(FunctionArity, RcDynIFunction)>,
     ) -> &Self {
         self.bind_macro(name, build_function(name, arities))
     }

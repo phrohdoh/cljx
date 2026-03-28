@@ -175,9 +175,8 @@ fn create_env() -> RcEnvironment {
     // (clojure.core/+ a b c ,,,)
     clojure_core.build_and_bind_function(
         "+",
-        vec![(
-            FunctionArity::AtLeast(0),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::AtLeast(0), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let any_arg_is_float = args.iter().map(Rc::as_ref).any(Value::is_float);
                 if any_arg_is_float {
                     let mut x = 0f64;
@@ -201,7 +200,7 @@ fn create_env() -> RcEnvironment {
                     Rc::new(Value::integer(x))
                 }
             }),
-        )],
+        ],
     );
 
     // (defn clojure.core/- [x & xs])
@@ -210,9 +209,8 @@ fn create_env() -> RcEnvironment {
     // (clojure.core/- a b c ,,,)
     clojure_core.build_and_bind_function(
         "-",
-        vec![box_fn(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, _args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, _args: Vec<RcValue>| {
                 todo!()
                 // let any_arg_is_float = args.iter().map(Rc::as_ref).any(Value::is_float);
                 // if any_arg_is_float {
@@ -236,10 +234,7 @@ fn create_env() -> RcEnvironment {
                 //     }
                 //     Rc::new(Value::integer(x))
                 // }
-            }),
-        ), box_fn(
-            FunctionArity::AtLeast(2),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+            }), closure_fn(FunctionArity::AtLeast(2), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let any_arg_is_float = args.iter().map(Rc::as_ref).any(Value::is_float);
                 if any_arg_is_float {
                     let mut x = 0f64;
@@ -262,17 +257,15 @@ fn create_env() -> RcEnvironment {
                     }
                     Rc::new(Value::integer(x))
                 }
-            }),
-        )],
+            })],
     );
 
     // (defn clojure.core/map [f coll])
     // (clojure.core/map f coll)
     clojure_core.build_and_bind_function(
         "map",
-        vec![(
-            FunctionArity::Exactly(2),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(2), |env: RcEnvironment, args: Vec<RcValue>| {
                 let f = args[0].clone();
                 let coll = args[1].clone();
                 match coll.as_ref() {
@@ -293,7 +286,7 @@ fn create_env() -> RcEnvironment {
                     _ => panic!("map expects a list, vector, set, or map as the second argument, but got: {:?}", coll),
                 }
             }),
-        )],
+        ],
     );
 
     // (defn clojure.core/prn [v & vs])
@@ -303,9 +296,8 @@ fn create_env() -> RcEnvironment {
     // (clojure.core/prn x y z ,,,)
     clojure_core.build_and_bind_function(
         "prn",
-        vec![(
-            FunctionArity::AtLeast(0),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::AtLeast(0), |env: RcEnvironment, args: Vec<RcValue>| {
                 let ns = env.get_namespace_or_panic("clojure.core");
                 let out = ns.get_value_or_panic("*out*");
 
@@ -328,95 +320,82 @@ fn create_env() -> RcEnvironment {
 
                 Value::nil().into()
             }),
-        )],
+        ],
     );
 
     // (clojure.core/symbol name)
     // (clojure.core/symbol ns_name name)
     clojure_core.build_and_bind_function(
         "symbol",
-        vec![box_fn(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let name = value::optics::view_string(args[0].as_ref())
                     .unwrap_or_else(|| panic!("symbol name must be a string, got {:?}", args[0]));
                 Rc::new(Value::symbol_unqualified(&name))
-            }),
-        ), box_fn(
-            FunctionArity::Exactly(2),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+            }), closure_fn(FunctionArity::Exactly(2), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let ns_name = value::optics::view_string(args[0].as_ref())
                     .unwrap_or_else(|| panic!("symbol namespace must be a string, got {:?}", args[0]));
                 let name = value::optics::view_string(args[1].as_ref())
                     .unwrap_or_else(|| panic!("symbol name must be a string, got {:?}", args[1]));
                 Rc::new(Value::symbol_qualified(&ns_name, &name))
             }),
-        )],
+        ],
     );
 
     // (defn clojure.core/resolve [symbol])
     // (clojure.core/resolve symbol)
     clojure_core.build_and_bind_function(
         "resolve",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| {
                 let symbol = value::optics::view_symbol(args[0].as_ref())
                     .unwrap_or_else(|| panic!("resolve expects a symbol argument, but got: {:?}", args[0]));
                 let var = try_resolve(env, &symbol).expect(&format!("unable to resolve: {}", symbol));
                 Rc::new(Value::var(var))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/deref var)
     clojure_core.build_and_bind_function(
         "deref",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<Rc<Value>>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<Rc<Value>>| {
                 let derefee = args.first().unwrap().to_owned();
                 value::optics::view_var(derefee.as_ref())
                     .and_then(|var| var.deref())
                     .map(|v| v.clone())
                     .unwrap_or(derefee)
             }),
-        )],
+        ],
     );
 
     // (clojure.core/eval value)
     clojure_core.build_and_bind_function(
         "eval",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| eval(env, args[0].clone())),
-        )],
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| eval(env, args[0].clone()))],
     );
 
     // (clojure.core/apply f)
     // (clojure.core/apply f args)
     clojure_core.build_and_bind_function(
         "apply",
-        vec![(
-            FunctionArity::AtLeast(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| apply(env, args[0].clone(), args[1..].to_vec())),
-        )],
+        vec![
+            closure_fn(FunctionArity::AtLeast(1), |env: RcEnvironment, args: Vec<RcValue>| apply(env, args[0].clone(), args[1..].to_vec()))],
     );
 
     clojure_core.build_and_bind_function(
         "list",
-        vec![(
-            FunctionArity::AtLeast(0),
-            Box::new(|_: RcEnvironment, args: Vec<RcValue>| Value::new_list_rc(args)),
-        )],
+        vec![
+            closure_fn(FunctionArity::AtLeast(0), |_: RcEnvironment, args: Vec<RcValue>| Value::new_list_rc(args))],
     );
 
     // (clojure.core/all-ns)
     clojure_core.build_and_bind_function(
         "all-ns",
-        vec![(
-            FunctionArity::Exactly(0),
-            Box::new(|env: RcEnvironment, _args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(0), |env: RcEnvironment, _args: Vec<RcValue>| {
                 Value::new_list_rc(
                     env.all_namespaces()
                         .into_iter()
@@ -424,16 +403,15 @@ fn create_env() -> RcEnvironment {
                         .collect()
                 )
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-map ns-name-symbol)
     // (clojure.core/ns-map (symbol "clojure.core"))
     clojure_core.build_and_bind_function(
         "ns-map",
-        vec![(
-            FunctionArity::AtLeast(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::AtLeast(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns_sym = value::optics::view_symbol(args.first().expect("ns-map requires at least one argument: the namespace to map").as_ref())
                     .expect("ns-map first argument must be a symbol naming the namespace to map");
                 let ns = env.get_namespace_or_panic(ns_sym.name());
@@ -445,15 +423,14 @@ fn create_env() -> RcEnvironment {
                     )).collect::<Vec<(_, _)>>()
                 ))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-map-2 (symbol "clojure.core"))
     clojure_core.build_and_bind_function(
         "ns-map-2",
-        vec![(
-            FunctionArity::AtLeast(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::AtLeast(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns_name_symbol = args.first()
                     .expect("ns-map requires at least one argument: an unqualified symbol naming the namespace to introspect");
                 let ns_name_symbol = value::optics::view_symbol(ns_name_symbol.as_ref())
@@ -471,15 +448,14 @@ fn create_env() -> RcEnvironment {
                     )).collect::<Vec<(_, _)>>()
                 ))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/in-ns sym)
     clojure_core.build_and_bind_function(
         "in-ns",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let sym = value::optics::view_symbol(args[0].as_ref())
                     .expect("in-ns argument must be a symbol");
                 let ns = env.create_namespace(sym.name());
@@ -487,29 +463,27 @@ fn create_env() -> RcEnvironment {
                    .bind_value("*ns*", Value::handle(Handle::new(ns.clone())));
                 Rc::new(Value::handle(Handle::new(ns)))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/create-ns sym)
     clojure_core.build_and_bind_function(
         "create-ns",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let sym = value::optics::view_symbol(args[0].as_ref())
                     .expect("create-ns argument must be a symbol");
                 let ns = env.create_namespace(sym.name());
                 Rc::new(Value::handle(Handle::new(ns)))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/find-ns sym)
     clojure_core.build_and_bind_function(
         "find-ns",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let sym = value::optics::view_symbol(args[0].as_ref())
                     .expect("find-ns argument must be a symbol");
                 match env.try_get_namespace(sym.name()) {
@@ -517,28 +491,26 @@ fn create_env() -> RcEnvironment {
                     None => Value::nil_rc(),
                 }
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-name ns)
     clojure_core.build_and_bind_function(
         "ns-name",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-name argument must be a namespace handle");
                 Rc::new(Value::symbol_unqualified(ns.name_str()))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-publics ns)
     clojure_core.build_and_bind_function(
         "ns-publics",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-publics argument must be a namespace handle");
                 let refers = ns.refers();
@@ -552,15 +524,14 @@ fn create_env() -> RcEnvironment {
                         .collect::<Vec<_>>(),
                 ))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-imports ns)
     clojure_core.build_and_bind_function(
         "ns-imports",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-imports argument must be a namespace handle");
                 Rc::new(Value::map_from(
@@ -572,15 +543,14 @@ fn create_env() -> RcEnvironment {
                         .collect::<Vec<_>>(),
                 ))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-aliases ns)
     clojure_core.build_and_bind_function(
         "ns-aliases",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-aliases argument must be a namespace handle");
                 Rc::new(Value::map_from(
@@ -592,15 +562,14 @@ fn create_env() -> RcEnvironment {
                         .collect::<Vec<_>>(),
                 ))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-refers ns)
     clojure_core.build_and_bind_function(
         "ns-refers",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-refers argument must be a namespace handle");
                 Rc::new(Value::map_from(
@@ -612,15 +581,14 @@ fn create_env() -> RcEnvironment {
                         .collect::<Vec<_>>(),
                 ))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-resolve ns sym)
     clojure_core.build_and_bind_function(
         "ns-resolve",
-        vec![(
-            FunctionArity::Exactly(2),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(2), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-resolve first argument must be a namespace handle");
                 let sym = value::optics::view_symbol(args[1].as_ref())
@@ -640,15 +608,14 @@ fn create_env() -> RcEnvironment {
                     },
                 }
             }),
-        )],
+        ],
     );
 
     // (clojure.core/resolve sym)
     clojure_core.build_and_bind_function(
         "resolve",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 //let sym = value::optics::view_symbol(&args[0])
                 //    .map(|sym| cljx::core::try_resolve(env.clone(), sym))
                 //    .unwrap_or_else(|| Ok(Value::nil_rc()));
@@ -672,29 +639,27 @@ fn create_env() -> RcEnvironment {
                     },
                 }
             }),
-        )],
+        ],
     );
 
     // (clojure.core/remove-ns sym)
     clojure_core.build_and_bind_function(
         "remove-ns",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let sym = value::optics::view_symbol(args[0].as_ref())
                     .expect("remove-ns argument must be a symbol");
                 env.remove_namespace(sym.name());
                 Value::nil_rc()
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-unalias ns alias)
     clojure_core.build_and_bind_function(
         "ns-unalias",
-        vec![(
-            FunctionArity::Exactly(2),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(2), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-unalias first argument must be a namespace handle");
                 let alias = value::optics::view_symbol(args[1].as_ref())
@@ -702,15 +667,14 @@ fn create_env() -> RcEnvironment {
                 ns.remove_alias(alias.name());
                 Value::nil_rc()
             }),
-        )],
+        ],
     );
 
     // (clojure.core/ns-unmap ns sym)
     clojure_core.build_and_bind_function(
         "ns-unmap",
-        vec![(
-            FunctionArity::Exactly(2),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+        vec![
+            closure_fn(FunctionArity::Exactly(2), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-unmap first argument must be a namespace handle");
                 let sym = value::optics::view_symbol(args[1].as_ref())
@@ -718,131 +682,117 @@ fn create_env() -> RcEnvironment {
                 ns.remove_var(sym.name());
                 Value::nil_rc()
             }),
-        )],
+        ],
     );
 
     // (clojure.core/intern ns sym)
     // (clojure.core/intern ns sym val)
     clojure_core.build_and_bind_function(
         "intern",
-        vec![box_fn(
-                FunctionArity::Exactly(2),
-                Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                    let ns = match args[0].try_get_handle::<RcNamespace>() {
-                        Ok(ns) => ns,
-                        Err(_) => {
-                            let sym = value::optics::view_symbol(args[0].as_ref())
-                                .expect("intern first arg must be a namespace handle or symbol");
-                            env.get_namespace_or_panic(sym.name())
-                        }
-                    };
-                    let var_sym = value::optics::view_symbol(args[1].as_ref())
-                        .expect("intern second argument must be a symbol");
-                    let var = match ns.try_get_var(var_sym.name()) {
-                        Ok(existing) => existing,
-                        Err(_) => {
-                            let new_var = Rc::new(Var::new_unbound());
-                            ns.insert_var(var_sym.name(), new_var.clone());
-                            new_var
-                        }
-                    };
-                    Rc::new(Value::var(var))
-                }),
-            ),
-            box_fn(
-                FunctionArity::Exactly(3),
-                Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                    let ns = match args[0].try_get_handle::<RcNamespace>() {
-                        Ok(ns) => ns,
-                        Err(_) => {
-                            let sym = value::optics::view_symbol(args[0].as_ref())
-                                .expect("intern first arg must be a namespace handle or symbol");
-                            env.get_namespace_or_panic(sym.name())
-                        }
-                    };
-                    let var_sym = value::optics::view_symbol(args[1].as_ref())
-                        .expect("intern second argument must be a symbol");
-                    let var = match ns.try_get_var(var_sym.name()) {
-                        Ok(existing) => existing,
-                        Err(_) => {
-                            let new_var = Rc::new(Var::new_unbound());
-                            ns.insert_var(var_sym.name(), new_var.clone());
-                            new_var
-                        }
-                    };
-                    var.bind(args[2].clone());
-                    Rc::new(Value::var(var))
-                }),
-            ),
+        vec![
+            closure_fn(FunctionArity::Exactly(2), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = match args[0].try_get_handle::<RcNamespace>() {
+                    Ok(ns) => ns,
+                    Err(_) => {
+                        let sym = value::optics::view_symbol(args[0].as_ref())
+                            .expect("intern first arg must be a namespace handle or symbol");
+                        env.get_namespace_or_panic(sym.name())
+                    }
+                };
+                let var_sym = value::optics::view_symbol(args[1].as_ref())
+                    .expect("intern second argument must be a symbol");
+                let var = match ns.try_get_var(var_sym.name()) {
+                    Ok(existing) => existing,
+                    Err(_) => {
+                        let new_var = Rc::new(Var::new_unbound());
+                        ns.insert_var(var_sym.name(), new_var.clone());
+                        new_var
+                    }
+                };
+                Rc::new(Value::var(var))
+            }), closure_fn(FunctionArity::Exactly(3), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                let ns = match args[0].try_get_handle::<RcNamespace>() {
+                    Ok(ns) => ns,
+                    Err(_) => {
+                        let sym = value::optics::view_symbol(args[0].as_ref())
+                            .expect("intern first arg must be a namespace handle or symbol");
+                        env.get_namespace_or_panic(sym.name())
+                    }
+                };
+                let var_sym = value::optics::view_symbol(args[1].as_ref())
+                    .expect("intern second argument must be a symbol");
+                let var = match ns.try_get_var(var_sym.name()) {
+                    Ok(existing) => existing,
+                    Err(_) => {
+                        let new_var = Rc::new(Var::new_unbound());
+                        ns.insert_var(var_sym.name(), new_var.clone());
+                        new_var
+                    }
+                };
+                var.bind(args[2].clone());
+                Rc::new(Value::var(var))
+            }),
         ],
     );
 
     // (clojure.core/meta obj)
     clojure_core.build_and_bind_function(
         "meta",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env, args: Vec<_>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env, args: Vec<_>| {
                 let obj = args.first().unwrap();
                 value::optics::view_meta(obj)
                     .map(Value::map_rc)
                     .unwrap_or_else(Value::nil_rc)
             }),
-        )],
+        ],
     );
 
     // (clojure.core/with-meta obj meta)
     clojure_core.build_and_bind_function(
         "with-meta",
-        vec![(
-            FunctionArity::Exactly(2),
-            Box::new(|_env, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(2), |_env, args: Vec<RcValue>| {
                 let mut args = args.into_iter();
                 let value = args.next().unwrap();
                 let meta = args.next().unwrap();
                 let meta = value::optics::view_map(meta.as_ref()).expect("with-meta meta argument must be a map");
                 value.with_meta_rc(Some(Rc::new(meta)))
             }),
-        )],
+        ],
     );
 
     // (clojure.core/get m k)
     // (clojure.core/get m k d)
     clojure_core.build_and_bind_function(
         "get",
-        vec![box_fn(
-            FunctionArity::Exactly(2),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
-                let mut args = args.into_iter();
-                let m = args.next().unwrap();
-                if m.is_nil() { return m; }
-                let k = args.next().unwrap();
-                let d = Value::nil_rc();
-                // (clojure.core/get m k nil)
-                env.get_namespace_or_panic("clojure.core")
-                   .get_function_or_panic("get")
-                   .invoke(env.clone(), vec![m, k, d])
-            }),
-        ), box_fn(
-            FunctionArity::Exactly(3),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
-                let mut args = args.into_iter();
-                let m = args.next().unwrap();
-                if m.is_nil() { return m; }
-                let k = args.next().unwrap();
-                let d = args.next().unwrap();
-                match m.as_ref() {
-                    Value::Nil(_) => m,
-                    Value::Vector(vector, _) => {
-                        let expect_message = format!("clojure.core/get vector branch: key is not an integer >= 0: {}", k.as_ref());
-                        let k = value::optics::view_integer(k.as_ref()).expect(&expect_message) as usize;
-                        vector.get_nth_or(k, d)
-                    },
-                    Value::Map(map, _) => map.get_or(&k, d),
-                    _ => Value::nil_rc(),
-                }
-            }),
-        )],
+        vec![closure_fn(FunctionArity::Exactly(2), |env: RcEnvironment, args: Vec<RcValue>| {
+            let mut args = args.into_iter();
+            let m = args.next().unwrap();
+            if m.is_nil() { return m; }
+            let k = args.next().unwrap();
+            let d = Value::nil_rc();
+            // (clojure.core/get m k nil)
+            env.get_namespace_or_panic("clojure.core")
+                .get_function_or_panic("get")
+                .invoke(env.clone(), vec![m, k, d])
+        }), closure_fn(FunctionArity::Exactly(3), |_env: RcEnvironment, args: Vec<RcValue>| {
+            let mut args = args.into_iter();
+            let m = args.next().unwrap();
+            if m.is_nil() { return m; }
+            let k = args.next().unwrap();
+            let d = args.next().unwrap();
+            match m.as_ref() {
+                Value::Nil(_) => m,
+                Value::Vector(vector, _) => {
+                    let expect_message = format!("clojure.core/get vector branch: key is not an integer >= 0: {}", k.as_ref());
+                    let k = value::optics::view_integer(k.as_ref()).expect(&expect_message) as usize;
+                    vector.get_nth_or(k, d)
+                },
+                Value::Map(map, _) => map.get_or(&k, d),
+                _ => Value::nil_rc(),
+            }
+        })],
     );
 
     // (clojure.core/get-in m ks)
@@ -850,8 +800,7 @@ fn create_env() -> RcEnvironment {
     clojure_core.build_and_bind_function(
         "get-in",
         vec![(
-            FunctionArity::Exactly(2),
-            Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
+            closure_fn(FunctionArity::Exactly(2), |env: RcEnvironment, args: Vec<RcValue>| {
                 let mut args = args.into_iter();
                 let m = args.next().unwrap();
                 if m.is_nil() { return m; }
@@ -873,9 +822,8 @@ fn create_env() -> RcEnvironment {
     // (clojure.core/assoc m k v & kvs)
     clojure_core.build_and_bind_function(
         "assoc",
-        vec![(
-            FunctionArity::AtLeast(3),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::AtLeast(3), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let m = args[0].to_owned();
                 // Validate even number of key-value pairs
                 if (args.len() - 1) % 2 != 0 {
@@ -909,15 +857,14 @@ fn create_env() -> RcEnvironment {
                     _ => todo!(),
                 }
             }),
-        )],
+        ],
     );
 
     // (clojure.core/assoc-in m ks v)
     clojure_core.build_and_bind_function(
         "assoc-in",
-        vec![(
-            FunctionArity::Exactly(3),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(3), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let m = args[0].to_owned();
                 let ks_arg = args[1].to_owned();
                 let v = args[2].to_owned();
@@ -1008,15 +955,14 @@ fn create_env() -> RcEnvironment {
                     assoc_in_recursive(m, &ks, v)
                 }
             }),
-        )],
+        ],
     );
 
     // (clojure.core/dissoc m k & ks)
     clojure_core.build_and_bind_function(
         "dissoc",
-        vec![(
-            FunctionArity::AtLeast(2),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::AtLeast(2), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let m = args[0].to_owned();
                 match m.as_ref() {
                     Value::Map(map, meta) => {
@@ -1034,76 +980,71 @@ fn create_env() -> RcEnvironment {
                     _ => m,
                 }
             }),
-        )],
+        ],
     );
 
     // (clojure.core/keys m)
     clojure_core.build_and_bind_function(
         "keys",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let Value::Map(m, _) = args[0].as_ref() else { unimplemented!() };
                 List::new_value_rc(m.keys())
             }),
-        )],
+        ],
     );
 
     // (clojure.core/vals m)
     clojure_core.build_and_bind_function(
         "vals",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let Value::Map(m, _) = args[0].as_ref() else { unimplemented!() };
                 List::new_value_rc(m.values())
             }),
-        )],
+        ],
     );
 
     // (clojure.core/first coll)
     clojure_core.build_and_bind_function(
         "first",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
                 match args[0].as_ref() {
                     Value::List(list, _) => list.get_first().unwrap_or_else(Value::nil_rc),
                     Value::Vector(vec, _) => vec.get_first().unwrap_or_else(Value::nil_rc),
                     _ => Value::nil_rc(),
                 }
             }),
-        )],
+        ],
     );
 
     // (clojure.core/second coll)
     clojure_core.build_and_bind_function(
         "second",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
                 match args[0].as_ref() {
                     Value::List(list, _) => list.get_second().unwrap_or_else(Value::nil_rc),
                     Value::Vector(vec, _) => vec.get_second().unwrap_or_else(Value::nil_rc),
                     _ => Value::nil_rc(),
                 }
             }),
-        )],
+        ],
     );
 
     // (clojure.core/last coll)
     clojure_core.build_and_bind_function(
         "last",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
                 match args[0].as_ref() {
                     Value::List(list, _) => list.get_last().unwrap_or_else(Value::nil_rc),
                     Value::Vector(vec, _) => vec.get_last().unwrap_or_else(Value::nil_rc),
                     _ => Value::nil_rc(),
                 }
             }),
-        )],
+        ],
     );
 
     bind_stdioe(
@@ -1128,16 +1069,15 @@ fn add_cljx_core(
         Vector::new_value(args.into_iter().map(Value::string_rc).collect()),
     );
 
-    // (defmacro cljx.core/macro [sym])
+    // (defmacro cljx.core/my-macro [sym])
     cljx_core.build_and_bind_macro(
         "my-macro",
-        vec![(
-            FunctionArity::Exactly(1),
-            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+        vec![
+            closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
                 let sym = value::optics::view_symbol(args.get(0).unwrap()).unwrap();
                 Value::string_rc(sym.name().to_owned())
             }),
-        )],
+        ],
     );
 
     cljx_core

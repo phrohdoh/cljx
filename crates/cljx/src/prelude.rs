@@ -5,7 +5,7 @@ pub use crate::list::{self, List};
 pub use crate::vector::{self, Vector};
 pub use crate::set::{self, Set};
 pub use crate::map::{self, Map};
-pub use crate::function::{self, IFunction, RcDynIFunction, Function, FunctionArity, RcFunction, build_function, build_function_rc, build_function_value, build_function_value_rc, box_fn};
+pub use crate::function::{self, IFunction, RcDynIFunction, Function, FunctionArity, RcFunction, FunctionBuilder, build_function, build_function_rc, build_function_value, build_function_value_rc, closure_fn};
 pub use crate::handle::{self, Handle, IHandle, WriteHandle, BufReadHandle};
 pub use crate::var::{self, Var, RcVar};
 pub use crate::meta::{self, MetaOps};
