@@ -1,4 +1,4 @@
-use std::{cell::{Ref, RefMut}, fmt, rc::Rc};
+use ::std::{cell::{Ref, RefMut}, fmt, rc::Rc};
 use crate::prelude::*;
 
 mod from;
@@ -432,7 +432,7 @@ impl Value {
 
 #[derive(Debug)]
 pub enum GetHandleError {
-    ValueIsNotHandle,
+    IncorrectValueType,
     IncorrectHandleType,
 }
 
@@ -440,37 +440,29 @@ impl Value {
     pub fn try_get_handle<T>(self: &'_ Value) -> Result<T, GetHandleError>
     where T: IHandle + Clone + 'static
     {
-        match self {
-            Value::Handle(handle, _) => match handle.downcast_ref::<T>() {
-                Some(ref_t) => Ok(ref_t.to_owned()),
-                None => Err(GetHandleError::IncorrectHandleType),
-            }
-            _ => Err(GetHandleError::ValueIsNotHandle),
-        }
+        value::optics::view_handle(self)
+            .ok_or(GetHandleError::IncorrectValueType)
+            .and_then(|handle| handle.downcast_ref::<T>()
+                .map(|ref_t| ref_t.to_owned())
+                .ok_or(GetHandleError::IncorrectHandleType))
     }
 
     pub fn try_get_handle_ref<'t, T>(&'t self) -> Result<Ref<'t, T>, GetHandleError>
     where T: IHandle + 'static
     {
-        match self {
-            Value::Handle(handle, _) => match handle.downcast_ref::<T>() {
-                Some(ref_t) => Ok(ref_t),
-                None => Err(GetHandleError::IncorrectHandleType),
-            }
-            _ => Err(GetHandleError::ValueIsNotHandle),
-        }
+        value::optics::view_handle_ref(self)
+            .ok_or(GetHandleError::IncorrectValueType)
+            .and_then(|handle| handle.downcast_ref::<T>()
+                .ok_or(GetHandleError::IncorrectHandleType))
     }
 
     pub fn try_get_handle_mut<T>(self: &'_ Value) -> Result<RefMut<'_, T>, GetHandleError>
     where T: IHandle + 'static
     {
-        match self {
-            Value::Handle(handle, _) => match handle.downcast_mut::<T>() {
-                Some(ref_t) => Ok(ref_t),
-                None => Err(GetHandleError::IncorrectHandleType),
-            }
-            _ => Err(GetHandleError::ValueIsNotHandle),
-        }
+        value::optics::view_handle_ref(self)
+            .ok_or(GetHandleError::IncorrectValueType)
+            .and_then(|handle| handle.downcast_mut::<T>()
+                .ok_or(GetHandleError::IncorrectHandleType))
     }
 }
 
@@ -524,12 +516,19 @@ impl fmt::Display for Value {
 #[cfg(test)]
 mod tests {
     use crate::prelude::*;
+
+    fn create_env() -> RcEnvironment {
+        let mut env_builder = Environment::builder();
+        env_builder.set_current_namespace_var("clojure.core", "*ns*");
+        env_builder.insert_namespace(Namespace::new_empty_rc("clojure.core"));
+        env_builder.build_rc()
+    }
+
     #[test]
-    #[ignore = "TODO: change Value's PartialEq impl to ignore metadata"]
     fn unqualified_keyword_equality() {
-        let env = Environment::new_empty_rc();
-        let k1 = read_one_v2(env.clone(), ":foo").unwrap().1.unwrap();
-        let k2 = read_one_v2(env.clone(), " :foo").unwrap().1.unwrap();
+        let env = create_env();
+        let k1 = read(env.clone(), ":foo").unwrap().1.unwrap();
+        let k2 = read(env.clone(), " :foo").unwrap().1.unwrap();
         assert_eq!(k1, k2);
     }
 }

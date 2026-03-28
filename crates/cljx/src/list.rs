@@ -1,4 +1,4 @@
-use core::fmt;
+use ::core::fmt;
 use itertools::Itertools;
 use crate::prelude::*;
 
@@ -179,7 +179,7 @@ impl fmt::Debug for List {
 // Generate tests for List
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
+    use ::std::rc::Rc;
 
     use super::*;
     #[test]

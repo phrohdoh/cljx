@@ -1,5 +1,5 @@
-use core::fmt;
-use std::rc::Rc;
+use ::core::fmt;
+use ::std::rc::Rc;
 use itertools::Itertools as _;
 use crate::prelude::*;
 
@@ -43,7 +43,7 @@ impl Map {
         self
     }
 
-    pub fn assoc(&self, key: RcValue, value: RcValue) -> Map {
+    pub fn assoc(&self, key: RcValue, value: RcValue) -> Self {
         let mut new_map = self.0.clone();
         new_map.insert(key, value);
         Self(new_map)
@@ -82,7 +82,7 @@ impl Map {
         self
     }
 
-    pub fn dissoc(&self, key: &RcValue) -> Map {
+    pub fn dissoc(&self, key: &RcValue) -> Self {
         let mut new_map = self.0.clone();
         new_map.remove(key);
         Self(new_map)

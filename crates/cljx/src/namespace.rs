@@ -1,73 +1,6 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use ::std::{cell::RefCell, collections::HashMap, rc::Rc};
 use crate::prelude::*;
 
-#[derive(Debug)]
-pub enum GetVarError {
-    NoSuchVar(SymbolQualified),
-}
-
-#[derive(Debug)]
-pub enum GetValueError {
-    NoSuchVar(SymbolQualified),
-    UnboundVar(SymbolQualified),
-}
-
-#[derive(Debug)]
-pub enum GetFunctionError {
-    NoSuchVar(SymbolQualified),
-    UnboundVar(SymbolQualified),
-    ValueIsNotFunction(SymbolQualified),
-}
-
-#[derive(Debug)]
-pub enum GetHandleError {
-    NoSuchVar(SymbolQualified),
-    UnboundVar(SymbolQualified),
-    ValueIsNotHandle(SymbolQualified),
-    IncorrectHandleType(SymbolQualified),
-}
-
-impl From<GetVarError> for GetValueError {
-    fn from(get_var_err: GetVarError) -> Self {
-        match get_var_err {
-            GetVarError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
-        }
-    }
-}
-
-impl From<GetVarError> for GetFunctionError {
-    fn from(get_var_err: GetVarError) -> Self {
-        match get_var_err {
-            GetVarError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
-        }
-    }
-}
-
-impl From<GetValueError> for GetFunctionError {
-    fn from(get_value_err: GetValueError) -> Self {
-        match get_value_err {
-            GetValueError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
-            GetValueError::UnboundVar(var_sym) => Self::UnboundVar(var_sym),
-        }
-    }
-}
-
-impl From<GetVarError> for GetHandleError {
-    fn from(get_var_err: GetVarError) -> Self {
-        match get_var_err {
-            GetVarError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
-        }
-    }
-}
-
-impl From<GetValueError> for GetHandleError {
-    fn from(get_value_err: GetValueError) -> Self {
-        match get_value_err {
-            GetValueError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
-            GetValueError::UnboundVar(var_sym) => Self::UnboundVar(var_sym),
-        }
-    }
-}
 
 pub type RcNamespace = Rc<Namespace>;
 pub type NamedVars = HashMap<SymbolUnqualified, RcVar>;
@@ -96,6 +29,18 @@ impl Namespace {
             imports: RefCell::new(Imports::new()),
             refers: RefCell::new(Refers::new()),
         }
+    }
+
+    pub fn new_empty_rc(
+        name: &str,
+    ) -> Rc<Self> {
+        Rc::new(Self {
+            name: SymbolUnqualified::new(name),
+            mappings: RefCell::new(NamedVars::new()),
+            aliases: RefCell::new(Aliases::new()),
+            imports: RefCell::new(Imports::new()),
+            refers: RefCell::new(Refers::new()),
+        })
     }
 
     pub fn new_from_named_values<'ns_name, 'name, I>(
@@ -155,6 +100,77 @@ impl Namespace {
             aliases: RefCell::new(Aliases::new()),
             imports: RefCell::new(Imports::new()),
             refers: RefCell::new(Refers::new()),
+        }
+    }
+}
+
+
+// read errors
+#[derive(Debug)]
+pub enum GetVarError {
+    NoSuchVar(SymbolQualified),
+}
+
+#[derive(Debug)]
+pub enum GetValueError {
+    NoSuchVar(SymbolQualified),
+    UnboundVar(SymbolQualified),
+}
+
+#[derive(Debug)]
+pub enum GetFunctionError {
+    NoSuchVar(SymbolQualified),
+    UnboundVar(SymbolQualified),
+    ValueIsNotFunction(SymbolQualified),
+}
+
+#[derive(Debug)]
+pub enum GetHandleError {
+    NoSuchVar(SymbolQualified),
+    UnboundVar(SymbolQualified),
+    IncorrectValueType(SymbolQualified),
+    IncorrectHandleType(SymbolQualified),
+}
+
+// read error conversions
+impl From<GetVarError> for GetValueError {
+    fn from(get_var_err: GetVarError) -> Self {
+        match get_var_err {
+            GetVarError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
+        }
+    }
+}
+
+impl From<GetVarError> for GetFunctionError {
+    fn from(get_var_err: GetVarError) -> Self {
+        match get_var_err {
+            GetVarError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
+        }
+    }
+}
+
+impl From<GetValueError> for GetFunctionError {
+    fn from(get_value_err: GetValueError) -> Self {
+        match get_value_err {
+            GetValueError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
+            GetValueError::UnboundVar(var_sym) => Self::UnboundVar(var_sym),
+        }
+    }
+}
+
+impl From<GetVarError> for GetHandleError {
+    fn from(get_var_err: GetVarError) -> Self {
+        match get_var_err {
+            GetVarError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
+        }
+    }
+}
+
+impl From<GetValueError> for GetHandleError {
+    fn from(get_value_err: GetValueError) -> Self {
+        match get_value_err {
+            GetValueError::NoSuchVar(var_sym) => Self::NoSuchVar(var_sym),
+            GetValueError::UnboundVar(var_sym) => Self::UnboundVar(var_sym),
         }
     }
 }
@@ -266,7 +282,7 @@ impl Namespace {
         match value.try_get_handle() {
             Ok(t) => Ok(t),
             Err(value::GetHandleError::IncorrectHandleType) => Err(GetHandleError::IncorrectHandleType(var_sym)),
-            Err(value::GetHandleError::ValueIsNotHandle) => Err(GetHandleError::ValueIsNotHandle(var_sym)),
+            Err(value::GetHandleError::IncorrectValueType) => Err(GetHandleError::IncorrectValueType(var_sym)),
         }
     }
 
@@ -325,6 +341,15 @@ impl Namespace {
     ) -> &Self {
         self.mappings.borrow_mut()
             .insert(SymbolUnqualified::new(name), var.into());
+        self
+    }
+
+    pub fn insert_function(
+        &self,
+        name: &str,
+        function: Function,
+    ) -> &Self {
+        self.insert_var(name, Var::new_bound(Value::function_rc(Rc::new(function))));
         self
     }
 
@@ -434,6 +459,23 @@ impl Namespace {
         self
     }
 
+    pub fn bind_macro(
+        &self,
+        name: &str,
+        function: Function,
+    ) -> &Self {
+        self.insert_var(
+            name,
+            Var::new_bound_with_meta(
+                Value::function(Rc::new(function)),
+                Some(Rc::new(Map::new(vec![(
+                    Value::keyword_unqualified_rc("macro"),
+                    Value::boolean_rc(true),
+                )]))),
+            ));
+        self
+    }
+
     pub fn build_and_bind_function(
         &self,
         name: &str,
@@ -443,6 +485,17 @@ impl Namespace {
         )>,
     ) -> &Self {
         self.bind_function(name, build_function(name, arities))
+    }
+
+    pub fn build_and_bind_macro(
+        &self,
+        name: &str,
+        arities: Vec<(
+            FunctionArity,
+            Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>,
+        )>,
+    ) -> &Self {
+        self.bind_macro(name, build_function(name, arities))
     }
 }
 

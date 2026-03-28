@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use ::std::rc::Rc;
 use crate::prelude::*;
 
 pub fn new_unset() -> Option<Map> {

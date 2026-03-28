@@ -1,4 +1,4 @@
-use core::fmt;
+use ::core::fmt;
 use itertools::Itertools as _;
 use crate::prelude::*;
 

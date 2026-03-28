@@ -832,29 +832,6 @@ function main() {
   # readarray -t aliases_keys <<< "$(jq -r -c '.aliases | keys[]' <<< "$spec_json")"
   readarray -t task_keys <<< "$(jq -r -c '.tasks | keys[]' <<< "$spec_json")"
 
-  #spec_json="$(
-  #  local new_tasks_json="[]";
-  #  for task_key in "${task_keys[@]}"; do
-  #    local task_json="$(jq -r -c --argjson task_key "$task_key" '.tasks[$task_key]' <<< "$spec_json")"
-  #    local new_task_json="$(expr:eval "$task_json" "$ctx_json" "$spec_json" "$task_json")"
-  #    new_tasks_json="$(jq -r -c --argjson new_task "$new_task_json" '.+[$new_task]' <<< "$new_tasks_json")"
-  #  done;
-  #
-  #  local new_aliases_json="{}";
-  #  for alias_key in "${aliases_keys[@]}"; do
-  #    local alias_value="$(jq -r -c --arg alias_key "$alias_key" '.aliases[$alias_key]' <<< "$spec_json")"
-  #    local new_alias_value="$(expr:eval "$alias_value" "$ctx_json" "$spec_json")"
-  #    new_aliases_json="$(jq -r -c --arg alias_key "$alias_key" --arg alias_value "$new_alias_value" '.+{$alias_key:$alias_value}' <<< "$new_aliases_json")"
-  #  done;
-  #
-  #  jq -r \
-  #     -c \
-  #     --argjson new_tasks "$new_tasks_json" \
-  #     --argjson new_aliases "$new_aliases_json" \
-  #     '.tasks=$new_tasks | .aliases=$new_aliases' \
-  #     <<< "$spec_json";
-  #)"
-
   GLOBALS['spec_json']="$spec_json"
 
   for task_key in "${task_keys[@]}"; do

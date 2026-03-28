@@ -350,6 +350,13 @@ fn read_one_v2_inner<'input>(
 mod v2_tests_inner {
     use super::*;
 
+    fn create_env() -> RcEnvironment {
+        let mut env_builder = Environment::builder();
+        env_builder.set_current_namespace_var("clojure.core", "*ns*");
+        env_builder.insert_namespace(Namespace::new_empty_rc("clojure.core"));
+        env_builder.build_rc()
+    }
+
     fn get_source_position_from_value_meta(v: &Value) -> SourcePosition {
         let meta_ref = Option::expect(value::optics::view_meta_ref(v), "meta should be present");
 
@@ -379,7 +386,7 @@ mod v2_tests_inner {
     #[test]
     fn position_tracking_on_symbol() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "hello";
 
         // - act
@@ -398,7 +405,7 @@ mod v2_tests_inner {
     #[test]
     fn position_tracking_on_list() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "(+ 1 2)";
         // - act
         let read_result = read_one_v2_inner(env, input);
@@ -425,7 +432,7 @@ mod v2_tests_inner {
     #[test]
     fn incomplete_list() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "(prn";
         // - act
         let read_result = read_one_v2_inner(env, input);
@@ -688,12 +695,39 @@ pub mod parse {
                     ws1,
                     build_try_parse_one(env.clone()),
                 )),
-                |elements| Rc::new(Value::list_from(elements)),
+                List::from
             ),
             preceded(ws0, char(')')),
         );
-        let (remaining, value) = parser(input)?;
-        Ok((remaining, value))
+        let (remaining, list) = parser(input)?;
+        Ok((remaining, Rc::new(Value::list(list))))
+
+        /*
+        if list.is_empty() {
+            return Ok((remaining, Rc::new(Value::list(list))));
+        }
+        let head = list.get_first().unwrap();
+        let head = match value::optics::view_symbol(head.as_ref()) {
+            None => return Ok((remaining, Rc::new(Value::list(list)))),
+            Some(symbol) => symbol,
+        };
+        let clojure_core = env.get_namespace_or_panic("clojure.core");
+        let resolve_func = clojure_core.get_function_or_panic("resolve");
+        let head = resolve_func.invoke(env.clone(), vec![Rc::new(Value::symbol(head.clone()))]);
+        if let Value::Var(var, Some(meta)) = head.as_ref() &&
+            meta.get(&Value::keyword_unqualified_rc("macro")).as_deref()
+                .and_then(value::optics::view_boolean).is_some_and(|boolean| boolean)
+        {
+            if let Some(macro_impl) = var.deref().as_deref().and_then(value::optics::view_function_ref) {
+                let expanded = macro_impl.invoke(env.clone(), list.iter().skip(1).cloned().collect());
+                Ok((remaining, expanded))
+            } else {
+                Ok((remaining, Rc::new(Value::list(list))))
+            }
+        } else {
+            Ok((remaining, Rc::new(Value::list(list))))
+        }
+        */
     }
 
     #[tracing::instrument(fields(input), ret, level = "info")]
@@ -753,10 +787,17 @@ pub mod parse {
 mod tests {
     use super::*;
 
+    fn create_env() -> RcEnvironment {
+        let mut env_builder = Environment::builder();
+        env_builder.set_current_namespace_var("clojure.core", "*ns*");
+        env_builder.insert_namespace(Namespace::new_empty_rc("clojure.core"));
+        env_builder.build_rc()
+    }
+
     #[test]
     fn symbol_unqualified() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "hello";
         // - act
         let result = parse::try_parse_symbol(env, input);
@@ -772,7 +813,7 @@ mod tests {
     #[test]
     fn symbol_qualified() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "foo/bar";
         // - act
         let result = parse::try_parse_symbol(env, input);
@@ -788,7 +829,7 @@ mod tests {
     #[test]
     fn symbol_slash() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "/";
         // - act
         let result = parse::try_parse_symbol(env, input);
@@ -804,7 +845,7 @@ mod tests {
     #[test]
     fn keyword_unqualified() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = ":hello";
         // - act
         let result = parse::try_parse_keyword(env, input);
@@ -820,7 +861,7 @@ mod tests {
     #[test]
     fn keyword_qualified() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = ":foo/bar";
         // - act
         let result = parse::try_parse_keyword(env, input);
@@ -836,7 +877,7 @@ mod tests {
     #[test]
     fn keyword_slash() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = ":/";
         // - act
         let result = parse::try_parse_keyword(env, input);
@@ -852,7 +893,7 @@ mod tests {
     #[test]
     fn keyword_double_colon_slash_rejected() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "::/";
         // - act
         let result = parse::try_parse_keyword(env, input);
@@ -863,7 +904,7 @@ mod tests {
     #[test]
     fn keyword_slash_with_following_identifier_rejected() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = ":/foo";
         // - act
         let result = parse::try_parse_keyword(env, input);
@@ -881,7 +922,7 @@ mod tests {
     #[test]
     fn keyword_double_colon_slash_with_following_identifier_rejected() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "::/foo";
         // - act
         let result = parse::try_parse_keyword(env, input);
@@ -892,7 +933,7 @@ mod tests {
     #[test]
     fn keyword_qualified_missing_name_rejected() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = ":foo/";
         // - act
         let result = parse::try_parse_keyword(env, input);
@@ -903,7 +944,7 @@ mod tests {
     #[test]
     fn keyword_double_colon_qualified_missing_name_rejected() {
         // - arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "::foo/";
         // - act
         let result = parse::try_parse_keyword(env, input);
@@ -914,7 +955,7 @@ mod tests {
     // Empty list tests
     #[test]
     fn empty_list() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "()";
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list");
@@ -925,7 +966,7 @@ mod tests {
 
     #[test]
     fn empty_list_with_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "( )";
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with space");
@@ -936,7 +977,7 @@ mod tests {
 
     #[test]
     fn empty_list_with_comma() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "(,)";
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with comma");
@@ -947,7 +988,7 @@ mod tests {
 
     #[test]
     fn empty_list_with_comma_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "(, )";
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with comma and space");
@@ -958,7 +999,7 @@ mod tests {
 
     #[test]
     fn empty_list_with_space_comma() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "( ,)";
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with space and comma");
@@ -969,7 +1010,7 @@ mod tests {
 
     #[test]
     fn empty_list_with_space_comma_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "( , )";
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with space, comma, and space");
@@ -981,7 +1022,7 @@ mod tests {
     // Empty vector tests
     #[test]
     fn empty_vector() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "[]";
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector");
@@ -992,7 +1033,7 @@ mod tests {
 
     #[test]
     fn empty_vector_with_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "[ ]";
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with space");
@@ -1003,7 +1044,7 @@ mod tests {
 
     #[test]
     fn empty_vector_with_comma() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "[,]";
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with comma");
@@ -1014,7 +1055,7 @@ mod tests {
 
     #[test]
     fn empty_vector_with_comma_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "[, ]";
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with comma and space");
@@ -1025,7 +1066,7 @@ mod tests {
 
     #[test]
     fn empty_vector_with_space_comma() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "[ ,]";
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with space and comma");
@@ -1036,7 +1077,7 @@ mod tests {
 
     #[test]
     fn empty_vector_with_space_comma_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "[ , ]";
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with space, comma, and space");
@@ -1048,7 +1089,7 @@ mod tests {
     // Empty set tests
     #[test]
     fn empty_set() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "#{}";
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set");
@@ -1059,7 +1100,7 @@ mod tests {
 
     #[test]
     fn empty_set_with_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "#{ }";
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with space");
@@ -1070,7 +1111,7 @@ mod tests {
 
     #[test]
     fn empty_set_with_comma() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "#{,}";
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with comma");
@@ -1081,7 +1122,7 @@ mod tests {
 
     #[test]
     fn empty_set_with_comma_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "#{, }";
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with comma and space");
@@ -1092,7 +1133,7 @@ mod tests {
 
     #[test]
     fn empty_set_with_space_comma() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "#{ ,}";
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with space and comma");
@@ -1103,7 +1144,7 @@ mod tests {
 
     #[test]
     fn empty_set_with_space_comma_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "#{ , }";
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with space, comma, and space");
@@ -1115,7 +1156,7 @@ mod tests {
     // Empty map tests
     #[test]
     fn empty_map() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "{}";
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map");
@@ -1126,7 +1167,7 @@ mod tests {
 
     #[test]
     fn empty_map_with_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "{ }";
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with space");
@@ -1137,7 +1178,7 @@ mod tests {
 
     #[test]
     fn empty_map_with_comma() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "{,}";
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with comma");
@@ -1148,7 +1189,7 @@ mod tests {
 
     #[test]
     fn empty_map_with_comma_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "{, }";
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with comma and space");
@@ -1159,7 +1200,7 @@ mod tests {
 
     #[test]
     fn empty_map_with_space_comma() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "{ ,}";
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with space and comma");
@@ -1170,7 +1211,7 @@ mod tests {
 
     #[test]
     fn empty_map_with_space_comma_space() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "{ , }";
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with space, comma, and space");
@@ -1182,7 +1223,7 @@ mod tests {
     // Tests for parsing keywords followed by collections
     #[test]
     fn keyword_followed_by_list() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = ":foo(bar)";
         let result = parse::try_parse_keyword(env.clone(), input);
         let (remaining, value) = result.expect("should parse keyword");
@@ -1204,7 +1245,7 @@ mod tests {
 
     #[test]
     fn keyword_followed_by_vector() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = ":foo[bar]";
         let result = parse::try_parse_keyword(env.clone(), input);
         let (remaining, value) = result.expect("should parse keyword");
@@ -1226,7 +1267,7 @@ mod tests {
 
     #[test]
     fn symbol_followed_by_vector() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "foo[bar]";
         let result = parse::try_parse_symbol(env.clone(), input);
         let (remaining, value) = result.expect("should parse symbol");
@@ -1248,7 +1289,7 @@ mod tests {
 
     #[test]
     fn symbol_followed_by_list() {
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let input = "foo(bar)";
         let symbol_result = parse::try_parse_symbol(env.clone(), input);
         let (remaining, value) = symbol_result.expect("should parse symbol");

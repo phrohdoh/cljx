@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc, cell::RefCell};
+use ::std::{collections::HashMap, rc::Rc, cell::RefCell};
 use crate::prelude::*;
 
 pub type RcEnvironment = Rc<Environment>;
@@ -7,41 +7,143 @@ pub type Namespaces = HashMap<SymbolUnqualified, RcNamespace>;
 #[derive(Debug)]
 pub struct Environment {
     namespaces: RefCell<Namespaces>,
+    current_namespace_var: SymbolQualified,
 }
 
 // constructors
 impl Environment {
-    pub fn new_empty() -> Self {
-        Self {
-            namespaces: RefCell::new(HashMap::new()),
+    pub fn builder() -> EnvironmentBuilder {
+        EnvironmentBuilder {
+            namespaces: Namespaces::new(),
+            current_namespace_var: None,
+        }
+    }
+}
+
+pub struct EnvironmentBuilder {
+    namespaces: Namespaces,
+    current_namespace_var: Option<SymbolQualified>,
+}
+
+impl EnvironmentBuilder {
+    pub fn insert_namespace(
+        &mut self,
+        ns: RcNamespace,
+    ) -> &mut Self {
+        self.namespaces.insert(SymbolUnqualified::new(ns.name_str()), ns);
+        self
+    }
+
+    pub fn set_current_namespace_var(
+        &mut self,
+        ns_name: &str,
+        name: &str,
+    ) -> &mut Self {
+        self.current_namespace_var = Some(SymbolQualified::new(ns_name, name));
+        self
+    }
+
+    pub fn build_blockers(&self) -> Vec<String> {
+        let mut blockers = vec![];
+        if self.current_namespace_var.is_none() {
+            blockers.push("current_namespace_var is not set".to_owned());
+        }
+        blockers
+    }
+
+    pub fn can_build(&self) -> bool {
+        self.build_blockers().is_empty()
+    }
+
+    pub fn build(self) -> Environment {
+        let blockers = self.build_blockers();
+        if !blockers.is_empty() {
+            panic!("{}", itertools::Itertools::join(&mut blockers.into_iter(), ", "));
+        }
+        Environment {
+            namespaces: RefCell::new(self.namespaces),
+            current_namespace_var: self.current_namespace_var.unwrap(),
         }
     }
 
-    pub fn new_empty_rc() -> Rc<Self> {
-        Rc::new(Self::new_empty())
-    }
-
-    pub fn new_from_namespaced_values<'a, 'b, I>(
-        namespaced_values_iter: I,
-    ) -> Self
-    where
-        I: IntoIterator<Item = (&'a str, Vec<(&'b str, Value)>)>
-    {
-        namespaced_values_iter.into_iter()
-            .fold(
-                Self::new_empty(),
-                |env, (ns_name, named_values)| {
-                    let ns = Namespace::new_from_named_values(
-                        ns_name,
-                        named_values,
-                    );
-                    env.namespaces.borrow_mut()
-                        .insert(SymbolUnqualified::new(ns_name), Rc::new(ns));
-                    env
-                },
-            )
+    pub fn build_rc(self) -> RcEnvironment {
+        Rc::new(self.build())
     }
 }
+
+
+// read errors
+#[derive(Debug, Clone)]
+pub enum GetCurrentNamespaceError {
+    NoSuchNamespace(SymbolUnqualified),
+    NoSuchVar(SymbolQualified),
+    UnboundVar(SymbolQualified),
+    IncorrectValueType(SymbolQualified),
+    IncorrectHandleType(SymbolQualified),
+}
+
+impl From<GetHandleError> for GetCurrentNamespaceError {
+    fn from(get_handle_error: GetHandleError) -> Self {
+        match get_handle_error {
+            GetHandleError::NoSuchVar(fqn) => Self::NoSuchVar(fqn),
+            GetHandleError::UnboundVar(fqn) => Self::UnboundVar(fqn),
+            GetHandleError::IncorrectValueType(fqn) => Self::IncorrectValueType(fqn),
+            GetHandleError::IncorrectHandleType(fqn) => Self::IncorrectHandleType(fqn),
+        }
+    }
+}
+
+// reads
+impl Environment {
+    pub fn try_get_current_namespace(&self) -> Result<RcNamespace, GetCurrentNamespaceError> {
+        // "clojure.core"
+        let ns_name = self.current_namespace_var.namespace();
+        // "*ns*"
+        let var_name = self.current_namespace_var.name();
+        // clojure.core namespace object
+        let ns = self.try_get_namespace(ns_name).ok_or_else(|| GetCurrentNamespaceError::NoSuchNamespace(SymbolUnqualified::new(ns_name)))?;
+        // namespace object that *ns* is bound to
+        let current_namespace = ns.try_get_handle::<RcNamespace>(var_name)?;
+        Ok(current_namespace)
+    }
+
+    pub fn get_current_namespace_or_panic(&self) -> RcNamespace {
+        self.try_get_current_namespace().unwrap()
+    }
+
+    // pub fn new_empty() -> Self {
+    //     Self {
+    //         namespaces: RefCell::new(HashMap::new()),
+    //     }
+    // }
+
+    // pub fn new_empty_rc() -> Rc<Self> {
+    //     Rc::new(Self::new_empty())
+    // }
+
+    // pub fn new_from_namespaced_values<'a, 'b, I>(
+    //     namespaced_values_iter: I,
+    // ) -> Self
+    // where
+    //     I: IntoIterator<Item = (&'a str, Vec<(&'b str, Value)>)>
+    // {
+    //     namespaced_values_iter.into_iter()
+    //         .fold(
+    //             Self::new_empty(),
+    //             |env, (ns_name, named_values)| {
+    //                 let ns = Namespace::new_from_named_values(
+    //                     ns_name,
+    //                     named_values,
+    //                 );
+    //                 env.namespaces.borrow_mut()
+    //                     .insert(SymbolUnqualified::new(ns_name), Rc::new(ns));
+    //                 env
+    //             },
+    //         )
+    // }
+}
+
+
 
 // reads
 impl Environment {
@@ -224,11 +326,13 @@ impl Environment {
         match self.try_get_namespace(name) {
             Some(ns) => ns,
             None => {
+                {
                 self.namespaces.borrow_mut()
                     .insert(
                         SymbolUnqualified::new(name),
                         Rc::new(Namespace::new_empty(name)),
                     );
+                }
                 self.get_namespace_or_panic(name)
             },
         }
@@ -245,10 +349,17 @@ impl Environment {
 mod tests {
     use super::*;
 
+    fn create_env() -> RcEnvironment {
+        let mut env_builder = Environment::builder();
+        env_builder.set_current_namespace_var("clojure.core", "*ns*");
+        env_builder.insert_namespace(Namespace::new_empty_rc("clojure.core"));
+        env_builder.build_rc()
+    }
+
     #[test]
     fn create_nonexistent_namespace() {
         // arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let ns_name = "my-ns";
         let has_ns_before_act = env.has_namespace(&ns_name);
         // act
@@ -262,7 +373,7 @@ mod tests {
     #[test]
     fn create_existent_namespace_does_not_overwrite() {
         // arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let ns_name = "my-ns";
         let name = "my-var";
         let value = Value::integer(42);
@@ -288,12 +399,9 @@ mod tests {
         let ns_name = "my-ns";
         let name = "my-var";
         let value = Value::keyword_unqualified("my-val");
-        let env = Environment::new_from_namespaced_values(vec![
-            (ns_name, vec![
-                (name,
-                 value),
-            ]),
-        ]);
+        let env = create_env();
+        env.create_namespace(ns_name)
+           .insert_var(name, Var::new_bound(value));
         // act
         let ns = env.get_namespace_or_panic("my-ns");
         let var = ns.try_get_var("my-var");

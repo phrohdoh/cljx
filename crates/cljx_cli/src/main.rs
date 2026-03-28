@@ -1,4 +1,4 @@
-use std::{env, io::{self}, rc::Rc};
+use ::std::{env, io::{self}, rc::Rc};
 use cljx::prelude::*;
 
 use opentelemetry::{global, trace::TracerProvider as _};
@@ -146,101 +146,6 @@ impl From<GetValueError> for ResolveError {
     }
 }
 
-#[tracing::instrument(ret, fields(env, symbol), level = "info")]
-fn try_resolve(
-    env: RcEnvironment,
-    symbol: &Symbol
-) -> Result<RcVar, ResolveError> {
-    match symbol {
-        Symbol::Qualified(sym) => {
-            log::warn!("Resolving qualified symbol: {}", sym);
-            env.try_get_namespace(sym.namespace())
-               .ok_or_else(|| ResolveError::NoSuchNamespace(SymbolUnqualified::new(sym.namespace())))?
-               .try_get_var(sym.name())
-               .map_err(ResolveError::from)
-        },
-        Symbol::Unqualified(sym) => {
-            log::warn!("Resolving unqualified symbol: {}", sym);
-            env.try_get_namespace("clojure.core")
-               .ok_or_else(|| ResolveError::NoSuchNamespace(SymbolUnqualified::new("clojure.core")))?
-               .try_get_handle::<RcNamespace>("*ns*")
-               .map_err(|_| ResolveError::UnknownCurrentNamespace)?
-               .try_get_var(sym.name())
-               .map_err(ResolveError::from)
-        },
-    }
-}
-
-#[tracing::instrument(ret, fields(env, symbol), level = "info")]
-fn resolve_or_panic(
-    env: RcEnvironment,
-    symbol: &Symbol
-) -> RcVar {
-    try_resolve(env, symbol)
-        .expect(&format!("could not resolve: #'{}", symbol))
-}
-
-#[tracing::instrument(ret, fields(env, v), level = "info")]
-fn eval(
-    env: RcEnvironment,
-    v: RcValue,
-) -> RcValue {
-    let clojure_core = env.get_namespace_or_panic("clojure.core");
-    let eval_func = clojure_core.get_function_or_panic("eval");
-    let apply_func = clojure_core.get_function_or_panic("apply");
-    match v.as_ref() {
-        Value::Nil(_) => v,
-        Value::Symbol(symbol, _) => resolve_or_panic(env.clone(), symbol).deref().expect(&format!("attempted to deref unbound Var: #'{}", symbol)),
-        Value::Keyword(_, _) => v,
-        Value::Boolean(_, _) => v,
-        Value::Integer(_, _) => v,
-        Value::Float(_, _) => v,
-        Value::String(_, _) => v,
-        Value::List(list, _) => {
-            if list.is_empty() { return v; }
-            let args: Vec<RcValue> = list.iter().skip(1).map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect();
-            let v = eval_func.invoke(env.clone(), vec![list.get_first().unwrap().to_owned()]);
-            apply_func.invoke(env.clone(), {
-                let mut apply_args = args;
-                apply_args.insert(0, v);
-                apply_args
-            })
-        },
-        Value::Vector(vector, _) => Value::new_vector_rc(vector.iter().map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect()),
-        Value::Set(set, _) => Value::new_set_rc(set.iter().map(|value| eval_func.invoke(env.clone(), vec![value.to_owned()])).collect()),
-        Value::Map(map, _) => Value::new_map_rc(map.iter().map(|(k, v)| (eval_func.invoke(env.clone(), vec![k.to_owned()]), eval_func.invoke(env.clone(), vec![v.to_owned()]))).collect()),
-        Value::Var(var, _) => var.deref().expect("attempted to deref unbound Var"),
-        Value::Function(_, _) => v,
-        Value::Handle(_, _) => v,
-    }
-}
-
-#[tracing::instrument(ret, fields(env, f, args), level = "info")]
-fn apply(
-    env: RcEnvironment,
-    f: RcValue,
-    args: Vec<RcValue>,
-) -> RcValue {
-    match f.as_ref() {
-        Value::Function(func, _) => func.invoke(env.clone(), args),
-        Value::Handle(handle, _) => {
-            if let Some(func) = handle.downcast_ref::<Function>() {
-                func.invoke(env.clone(), args)
-            } else {
-                f
-            }
-        }
-        // TODO: properly handle other variants
-        _ => {
-            eprintln!(
-                "Warning: apply called on non-function value: {:?}",
-                f
-            );
-            f
-        }
-    }
-}
-
 fn usage(bin_call: &str) {
     println!("Usage of {bin_call}:");
     println!("{bin_call} --help");
@@ -255,7 +160,11 @@ fn usage_repl(bin_call: &str) {
 
 // #[tracing::instrument(ret, level = "info")]
 fn create_env() -> RcEnvironment {
-    let env = Environment::new_empty_rc();
+    let env = {
+        let mut env_builder = Environment::builder();
+        env_builder.set_current_namespace_var("clojure.core", "*ns*");
+        env_builder.build_rc()
+    };
 
     let clojure_core = env.create_namespace("clojure.core");
     clojure_core.bind_value("*ns*", Value::handle(Handle::new(clojure_core.clone())));
@@ -301,7 +210,7 @@ fn create_env() -> RcEnvironment {
     // (clojure.core/- a b c ,,,)
     clojure_core.build_and_bind_function(
         "-",
-        vec![(
+        vec![box_fn(
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnvironment, _args: Vec<RcValue>| {
                 todo!()
@@ -328,7 +237,7 @@ fn create_env() -> RcEnvironment {
                 //     Rc::new(Value::integer(x))
                 // }
             }),
-        ), (
+        ), box_fn(
             FunctionArity::AtLeast(2),
             Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
                 let any_arg_is_float = args.iter().map(Rc::as_ref).any(Value::is_float);
@@ -426,27 +335,21 @@ fn create_env() -> RcEnvironment {
     // (clojure.core/symbol ns_name name)
     clojure_core.build_and_bind_function(
         "symbol",
-        vec![(
+        vec![box_fn(
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
-                let name = match args[0].as_ref() {
-                    Value::String(name, _) => name.as_ref(),
-                    _ => panic!("symbol name must be a string, got {:?}", args[0]),
-                };
-                Rc::new(Value::symbol_unqualified(name))
+                let name = value::optics::view_string(args[0].as_ref())
+                    .unwrap_or_else(|| panic!("symbol name must be a string, got {:?}", args[0]));
+                Rc::new(Value::symbol_unqualified(&name))
             }),
-        ), (
+        ), box_fn(
             FunctionArity::Exactly(2),
             Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
-                let ns_name = match args[0].as_ref() {
-                    Value::String(ns_name, _) => ns_name.as_ref(),
-                    _ => panic!("symbol namespace must be a string, got {:?}", args[0]),
-                };
-                let name = match args[1].as_ref() {
-                    Value::String(name, _) => name.as_ref(),
-                    _ => panic!("symbol name must be a string, got {:?}", args[1]),
-                };
-                Rc::new(Value::symbol_qualified(ns_name, name))
+                let ns_name = value::optics::view_string(args[0].as_ref())
+                    .unwrap_or_else(|| panic!("symbol namespace must be a string, got {:?}", args[0]));
+                let name = value::optics::view_string(args[1].as_ref())
+                    .unwrap_or_else(|| panic!("symbol name must be a string, got {:?}", args[1]));
+                Rc::new(Value::symbol_qualified(&ns_name, &name))
             }),
         )],
     );
@@ -458,11 +361,9 @@ fn create_env() -> RcEnvironment {
         vec![(
             FunctionArity::Exactly(1),
             Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
-                let symbol = match args[0].as_ref() {
-                    Value::Symbol(symbol, _) => symbol,
-                    _ => panic!("resolve expects a symbol argument, but got: {:?}", args[0]),
-                };
-                let var = try_resolve(env, symbol).expect(&format!("unable to resolve: {}", symbol));
+                let symbol = value::optics::view_symbol(args[0].as_ref())
+                    .unwrap_or_else(|| panic!("resolve expects a symbol argument, but got: {:?}", args[0]));
+                let var = try_resolve(env, &symbol).expect(&format!("unable to resolve: {}", symbol));
                 Rc::new(Value::var(var))
             }),
         )],
@@ -475,10 +376,10 @@ fn create_env() -> RcEnvironment {
             FunctionArity::Exactly(1),
             Box::new(|_env: RcEnvironment, args: Vec<Rc<Value>>| {
                 let derefee = args.first().unwrap().to_owned();
-                match derefee.as_ref() {
-                    Value::Var(var, _) => var.deref().expect("attempted to deref unbound Var").clone(),
-                    _ => derefee,
-                }
+                value::optics::view_var(derefee.as_ref())
+                    .and_then(|var| var.deref())
+                    .map(|v| v.clone())
+                    .unwrap_or(derefee)
             }),
         )],
     );
@@ -509,44 +410,6 @@ fn create_env() -> RcEnvironment {
             Box::new(|_: RcEnvironment, args: Vec<RcValue>| Value::new_list_rc(args)),
         )],
     );
-
-    // TODO: clojure.core/declare macro
-    /*
-    clojure_core.build_and_bind_function(
-        "declare",
-        vec![(
-            FunctionArity::AtLeast(1),
-            Box::new(|env: RcEnvironment, decl_args: Vec<RcValue>| {
-                // unmap all
-                let unmap_func = env.get_function_value(("clojure.core", "unmap"));
-                let apply_func = env.get_function_rc(("clojure.core", "apply"));
-
-                apply_func.invoke(env.clone(), {
-                    let mut apply_args = decl_args.clone();
-                    apply_args.insert(0, unmap_func);
-                    apply_args
-                });
-
-                for name in decl_args.iter() {
-                    let name = match name.as_ref() {
-                        // Value::String(name, _) => name.to_owned(),
-                        Value::Symbol(Symbol::Unqualified(sym), _) => sym.name().to_owned(),
-                        _ => break,
-                    };
-                    // if let Some(var) = env.get_var_in_self_or_ancestors(&SymbolUnqualified::new(name)) {
-                    //     if var.is_bound() {
-                    //         var.unbind();
-                    //     }
-                    //     env.remove(&name);
-                    // }
-                    env.insert(SymbolUnqualified::new(name.as_str()), Var::new_unbound());
-                }
-
-                Value::nil().into()
-            }),
-        )],
-    );
-    */
 
     // (clojure.core/all-ns)
     clojure_core.build_and_bind_function(
@@ -769,7 +632,7 @@ fn create_env() -> RcEnvironment {
                     },
                     Symbol::Qualified(s) => {
                         match env.try_get_namespace(s.namespace())
-                            .and_then(|lookup_ns| lookup_ns.try_get_var(s.name()).ok())
+                            .and_then(|ns| ns.try_get_var(s.name()).ok())
                         {
                             Some(var) => Rc::new(Value::var(var)),
                             None => Value::nil_rc(),
@@ -786,6 +649,9 @@ fn create_env() -> RcEnvironment {
         vec![(
             FunctionArity::Exactly(1),
             Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
+                //let sym = value::optics::view_symbol(&args[0])
+                //    .map(|sym| cljx::core::try_resolve(env.clone(), sym))
+                //    .unwrap_or_else(|| Ok(Value::nil_rc()));
                 let current_ns = env.get_namespace_or_panic("clojure.core")
                     .try_get_handle::<RcNamespace>("*ns*")
                     .expect("*ns* must be a namespace handle");
@@ -798,7 +664,7 @@ fn create_env() -> RcEnvironment {
                     },
                     Symbol::Qualified(s) => {
                         match env.try_get_namespace(s.namespace())
-                            .and_then(|lookup_ns| lookup_ns.try_get_var(s.name()).ok())
+                            .and_then(|ns| ns.try_get_var(s.name()).ok())
                         {
                             Some(var) => Rc::new(Value::var(var)),
                             None => Value::nil_rc(),
@@ -859,8 +725,7 @@ fn create_env() -> RcEnvironment {
     // (clojure.core/intern ns sym val)
     clojure_core.build_and_bind_function(
         "intern",
-        vec![
-            (
+        vec![box_fn(
                 FunctionArity::Exactly(2),
                 Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                     let ns = match args[0].try_get_handle::<RcNamespace>() {
@@ -884,7 +749,7 @@ fn create_env() -> RcEnvironment {
                     Rc::new(Value::var(var))
                 }),
             ),
-            (
+            box_fn(
                 FunctionArity::Exactly(3),
                 Box::new(|env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                     let ns = match args[0].try_get_handle::<RcNamespace>() {
@@ -917,7 +782,7 @@ fn create_env() -> RcEnvironment {
         "meta",
         vec![(
             FunctionArity::Exactly(1),
-            Box::new(|_env, args| {
+            Box::new(|_env, args: Vec<_>| {
                 let obj = args.first().unwrap();
                 value::optics::view_meta(obj)
                     .map(Value::map_rc)
@@ -931,7 +796,7 @@ fn create_env() -> RcEnvironment {
         "with-meta",
         vec![(
             FunctionArity::Exactly(2),
-            Box::new(|_env, args| {
+            Box::new(|_env, args: Vec<RcValue>| {
                 let mut args = args.into_iter();
                 let value = args.next().unwrap();
                 let meta = args.next().unwrap();
@@ -945,7 +810,7 @@ fn create_env() -> RcEnvironment {
     // (clojure.core/get m k d)
     clojure_core.build_and_bind_function(
         "get",
-        vec![(
+        vec![box_fn(
             FunctionArity::Exactly(2),
             Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
                 let mut args = args.into_iter();
@@ -958,7 +823,7 @@ fn create_env() -> RcEnvironment {
                    .get_function_or_panic("get")
                    .invoke(env.clone(), vec![m, k, d])
             }),
-        ), (
+        ), box_fn(
             FunctionArity::Exactly(3),
             Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
                 let mut args = args.into_iter();
@@ -986,7 +851,7 @@ fn create_env() -> RcEnvironment {
         "get-in",
         vec![(
             FunctionArity::Exactly(2),
-            Box::new(|env, args| {
+            Box::new(|env: RcEnvironment, args: Vec<RcValue>| {
                 let mut args = args.into_iter();
                 let m = args.next().unwrap();
                 if m.is_nil() { return m; }
@@ -1012,16 +877,16 @@ fn create_env() -> RcEnvironment {
             FunctionArity::AtLeast(3),
             Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
                 let m = args[0].to_owned();
-                let m = match m.as_ref() {
-                    Value::Nil(_) => Rc::new(Value::new_map_empty()),
-                    Value::Map(m, meta) => Rc::new(Value::Map(m.clone(), meta.clone())),
-                    _ => panic!("assoc expects a map or nil as the first argument"),
-                    // TODO: support Vector
-                };
                 // Validate even number of key-value pairs
                 if (args.len() - 1) % 2 != 0 {
-                    panic!("assoc expects an even number of key-value arguments");
+                    panic!("clojure.core/assoc expects an even number of key-value arguments");
                 }
+                let m = match m.as_ref() {
+                    Value::Nil(meta) => Rc::new(Value::new_map_empty().with_meta(meta.clone())),
+                    Value::Map(..) => m,
+                    Value::Vector(..) => m,
+                    _ => panic!("clojure.core/assoc expects a nil, map, or vector as the first argument"),
+                };
                 match m.as_ref() {
                     Value::Map(map, meta) => {
                         let mut new_map = map.clone();
@@ -1031,12 +896,17 @@ fn create_env() -> RcEnvironment {
                             let v = args[i + 1].to_owned();
                             new_map.insert(k, v);
                         }
-                        Rc::new(Value::Map(
-                            new_map,
-                            meta.clone(),
-                        ))
+                        Rc::new(Value::Map(new_map, meta.clone()))
                     },
-                    _ => m,
+                    Value::Vector(vector, meta) => {
+                        let new_vector = vector.clone();
+                        // TODO:
+                        // - get k as int
+                        // - bounds check
+                        // - insert at index
+                        Rc::new(Value::Vector(new_vector, meta.clone()))
+                    },
+                    _ => todo!(),
                 }
             }),
         )],
@@ -1063,10 +933,10 @@ fn create_env() -> RcEnvironment {
                 if ks.is_empty() {
                     let nil_key = Value::nil_rc();
                     match m.as_ref() {
-                        Value::Nil(_) => {
+                        Value::Nil(meta) => {
                             let mut map = Map::new_empty();
                             map.insert(nil_key, v);
-                            Rc::new(Value::Map(map, None))
+                            Rc::new(Value::Map(map, meta.clone()))
                         }
                         Value::Map(map, meta) => {
                             let mut new_map = map.clone();
@@ -1078,7 +948,7 @@ fn create_env() -> RcEnvironment {
                             let err_msg = format!("Key must be integer");
                             let _ = value::optics::view_integer(nil_key.as_ref())
                                 .expect(&err_msg);
-                            unreachable!()
+                            todo!()
                         }
                         _ => m,
                     }
@@ -1246,11 +1116,40 @@ fn create_env() -> RcEnvironment {
     env
 }
 
+fn add_cljx_core(
+    env: RcEnvironment,
+    args: Vec<String>,
+) -> RcNamespace {
+    let cljx_core = env.create_namespace("cljx.core");
+
+    // (def cljx.core/*args* [,,,])
+    cljx_core.bind_value(
+        "*args*",
+        Vector::new_value(args.into_iter().map(Value::string_rc).collect()),
+    );
+
+    // (defmacro cljx.core/macro [sym])
+    cljx_core.build_and_bind_macro(
+        "my-macro",
+        vec![(
+            FunctionArity::Exactly(1),
+            Box::new(|_env: RcEnvironment, args: Vec<RcValue>| {
+                let sym = value::optics::view_symbol(args.get(0).unwrap()).unwrap();
+                Value::string_rc(sym.name().to_owned())
+            }),
+        )],
+    );
+
+    cljx_core
+}
+
 #[tracing::instrument(ret, fields(bin_call, args), level = "info")]
 fn eval_string(bin_call: &str, args: Vec<String>) {
-    let string = args.first().expect(&format!("{} eval-string requires an argument", bin_call));
+    let string = args.first().expect(&format!("{} eval-string requires an argument", bin_call)).to_owned();
+    let args = args.into_iter().skip(1).collect();
     let env = create_env();
-    let read_output = read_one_v2(env.clone(), string.as_str()).expect("failed to read string");
+    add_cljx_core(env.clone(), args);
+    let read_output = read(env.clone(), string.as_str()).expect("failed to read string");
     let read_value = read_output.1.expect("no value read from string");
     let evaled = eval(env.clone(), read_value);
     println!("{evaled}");
@@ -1277,7 +1176,10 @@ fn eval_file(
 ) {
     let file_path = args.first().expect(&format!("{} eval-file requires a file path argument", bin_call));
     let file_contents = std::fs::read_to_string(file_path).expect(&format!("failed to read file: {}", file_path));
+
+    let args = args.into_iter().skip(1).collect();
     let env = create_env();
+    add_cljx_core(env.clone(), args);
 
     let mut remaining = file_contents.as_str();
     let mut last_result = Value::nil_rc();
@@ -1288,7 +1190,7 @@ fn eval_file(
             break;
         }
 
-        match read_one_v2(env.clone(), remaining) {
+        match read(env.clone(), remaining) {
             Ok((next_remaining, Some(value))) => {
                 last_result = eval(env.clone(), value);
                 remaining = next_remaining;
@@ -1319,19 +1221,35 @@ fn read_string(
     bin_call: &str,
     args: Vec<String>,
 ) {
-    let string = args.first().expect(&format!("{} read-string requires an argument", bin_call));
+    let string = args.first().expect(&format!("{} read-string requires an argument", bin_call)).to_owned();
+
+    let args = args.into_iter().skip(1).collect();
     let env = create_env();
-    let read_output = read_one_v2(env.clone(), string.as_str()).expect("failed to read string");
-    let read_value = read_output.1.expect("no value read from string");
-    println!("{read_value}");
+    add_cljx_core(env.clone(), args);
+
+    let read_result = read(env.clone(), string.as_str());
+    match read_result {
+        Ok((_, Some(value))) => {
+            println!("{value}");
+        },
+        Ok((_, None)) => {
+            println!("<no value read>");
+        },
+        Err(err) => {
+            eprintln!("Error reading string:");
+            eprintln!("{}", err.into_inner());
+        },
+    }
 }
 
 #[tracing::instrument(ret, fields(bin_call, args), level = "info")]
 fn demo_optics(
     _bin_call: &str,
-    _args: Vec<String>,
+    args: Vec<String>,
 ) {
     let env = create_env();
+    add_cljx_core(env.clone(), args);
+
     let clojure_core = env.get_namespace_or_panic("clojure.core");
     for (test_input, test_expr, expected) in vec![
         ("[:foo :bar [:baz [:qux]]]", "(get-in *test-input* [0])",     ":foo"),
@@ -1340,9 +1258,9 @@ fn demo_optics(
         ("[:foo :bar [:baz [:qux]]]", "(get-in *test-input* [2 1])",   "[:qux]"),
         ("[:foo :bar [:baz [:qux]]]", "(get-in *test-input* [2 1 0])", ":qux"),
     ] {
-        let test_input = read_one_v2(env.clone(), test_input).unwrap().1.unwrap();
-        let test_expr = read_one_v2(env.clone(), test_expr).unwrap().1.unwrap();
-        let expected = read_one_v2(env.clone(), expected).unwrap().1.unwrap();
+        let test_input = read(env.clone(), test_input).unwrap().1.unwrap();
+        let test_expr = read(env.clone(), test_expr).unwrap().1.unwrap();
+        let expected = read(env.clone(), expected).unwrap().1.unwrap();
         clojure_core.bind_value_rc("*test-input*", test_input.clone());
         let ret = clojure_core.get_function_or_panic("eval")
             .invoke(env.clone(), vec![test_expr.clone()]);
@@ -1420,7 +1338,7 @@ fn demo_optics(
     // use value::optics::view_list_ref;
     // use list::partials::{get_nth as list_get_nth};
     // let input = args.first().map(AsRef::as_ref).unwrap_or("[:foo :bar (:baz [:qux])]");
-    // let input = read_one_v2(Environment::new_empty_rc(), input).unwrap().1.unwrap();
+    // let input = read(Environment::new_empty_rc(), input).unwrap().1.unwrap();
     // let input_0     = view_vector_ref(input.as_ref()).and_then(vector_get_nth(0)).unwrap_or_else(Value::nil_rc);
     // let input_1     = view_vector_ref(input.as_ref()).and_then(vector_get_nth(1)).unwrap_or_else(Value::nil_rc);
     // let input_2     = view_vector_ref(input.as_ref()).and_then(vector_get_nth(2)).unwrap_or_else(Value::nil_rc);
@@ -1449,11 +1367,11 @@ fn demo_optics(
 
 fn bind_stdioe(
     ns: &Namespace,
-    in_name: &str,  // *in*
+    in_name: &str,  // "*in*"
     get_in_handle: impl Fn() -> BufReadHandle,
-    out_name: &str, // *out*
+    out_name: &str, // "*out*"
     get_out_handle: impl Fn() -> WriteHandle,
-    err_name: &str, // *err*
+    err_name: &str, // "*err*"
     get_err_handle: impl Fn() -> WriteHandle,
 ) {
     log::info!("Creating stdin, stdout, and stderr handles.");
@@ -1482,36 +1400,16 @@ fn demo_repl(bin_call: &str, args: Vec<String>) {
 
     fn print_welcome_message() {
         println!("Welcome to the CLJX REPL!");
-    }
-
-    fn print_help_message() {
-        println!("help:");
-        println!("  type (help) to print this help message");
-        println!("  type (exit) to exit the REPL");
-        println!("  type (nsmap) to print a map of vars");
+        println!();
+        println!("press Ctrl-c to quit");
+        println!();
     }
 
     let env = create_env();
-    let clojure_core = env.get_namespace_or_panic("clojure.core");
-
-    clojure_core.bind_value(
-        "*command-line-args*",
-        List::new_value(args.into_iter().map(Value::string_rc).collect()),
-    );
-
-    clojure_core.build_and_bind_function(
-        "help",
-        vec![(
-        FunctionArity::Exactly(0),
-        Box::new(|_scope, _args| {
-            print_help_message();
-            Value::nil_rc()
-        }),
-    )]);
+    add_cljx_core(env.clone(), args);
 
     if display_startup_messages {
         print_welcome_message();
-        print_help_message();
     }
 
     repl(env);
@@ -1521,7 +1419,7 @@ fn demo_repl(bin_call: &str, args: Vec<String>) {
 fn repl(env: RcEnvironment) {
     env.create_namespace("cljx.repl");
 
-    use std::io::Write as _;
+    use ::std::io::Write as _;
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     let _stderr = std::io::stderr();
@@ -1539,7 +1437,9 @@ fn repl(env: RcEnvironment) {
         if contains_unclosed_delimiter(line.as_str()) { write!(stdout, "> ").unwrap(); continue; }
 
         let accumulated_input = pending.accumulated_input().to_owned();
-        match read_one_v2(env.clone(), accumulated_input.as_str()) {
+        if accumulated_input.trim().is_empty() { write!(stdout, "> ").unwrap(); pending.clear(); continue; }
+        let read_result = read(env.clone(), accumulated_input.as_str());
+        match read_result {
             Ok(read_output) => {
                 let rest_input = read_output.0.to_owned();
 
@@ -1552,10 +1452,8 @@ fn repl(env: RcEnvironment) {
                        .get_function_or_panic("eval")
                        .invoke(env.clone(), vec![value])
                        ;
-                    //let clojure_core = env.get_namespace_or_panic("clojure.core");
-                    //let eval_func = clojure_core.get_function_or_panic("eval");
-                    //let evaled = eval_func.invoke(env.clone(), vec![value]);
                     writeln!(stdout, "{}", evaled).unwrap();
+                    write!(stdout, "> ").unwrap();
                 }
             },
             Err(err) => {
@@ -1644,7 +1542,7 @@ fn contains_unclosed_delimiter(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Cow;
+    use ::std::borrow::Cow;
     use super::*;
 
     fn ensure_trailing_linefeed<'s>(s: &'s str) -> Cow<'s, str> {
@@ -1658,7 +1556,7 @@ mod tests {
     #[test]
     fn multi_line_repl_input() {
         // arrange
-        let env = Environment::new_empty_rc();
+        let env = create_env();
         let mut pending = PendingInput::new_empty();
 
         let lines = vec![
@@ -1677,7 +1575,7 @@ mod tests {
                 continue;
             }
             let accumulated_input = pending.accumulated_input().to_owned();
-            let read_output = read_one_v2(env.clone(), accumulated_input.as_str()).expect("read error");
+            let read_output = read(env.clone(), accumulated_input.as_str()).expect("read error");
             let rest_input_1 = read_output.0.to_owned();
             value = read_output.1;
             pending.clear();
@@ -1698,13 +1596,7 @@ mod tests {
     #[test]
     fn try_resolve_qualified_symbol() {
         // arrange
-        let env = {
-            let env = Environment::new_empty();
-            //let ns = env.create_namespace("cljx.cli.tests");
-            //env.create_namespace("clojure.core")
-            //   .bind_handle("*ns*", Handle::new(ns));
-            Rc::new(env)
-        };
+        let env = create_env();
         let symbol = Symbol::new_qualified("cljx.cli.tests", "my-var");
         // act
         let resolved = try_resolve(env, &symbol);
@@ -1716,11 +1608,11 @@ mod tests {
     fn try_resolve_unqualified_symbol() {
         // arrange
         let env = {
-            let env = Environment::new_empty();
+            let env = create_env();
             let ns = env.create_namespace("cljx.cli.tests");
             env.create_namespace("clojure.core")
                .bind_handle("*ns*", Handle::new(ns));
-            Rc::new(env)
+            env
         };
         let symbol = Symbol::new_unqualified("my-var");
         // act
@@ -1734,7 +1626,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(assoc {:a 1} :b 2)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1757,7 +1649,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(assoc {:a 1 :b 2} :a 10)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1780,7 +1672,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(assoc {:a 1} :b 2 :c 3 :d 4)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1807,7 +1699,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(assoc {:a 1 :b 2} :a 100 :c 3)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1832,7 +1724,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(assoc {} :a 1)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1855,7 +1747,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(assoc {:a 1} :b 2 :c)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act & assert (should panic)
@@ -1867,7 +1759,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(dissoc {:a 1 :b 2} :a)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1891,7 +1783,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(dissoc {:a 1 :b 2 :c 3} :a :c)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1917,7 +1809,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(dissoc {:a 1} :missing)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1939,7 +1831,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(dissoc {} :a)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1959,7 +1851,7 @@ mod tests {
         // arrange
         let env = create_env();
         let input = "(dissoc {:a 1 :b 2} :a :b)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         // act
@@ -1978,7 +1870,7 @@ mod tests {
     fn assoc_in_empty_map_nested() {
         let env = create_env();
         let input = "(assoc-in {} [:a :b :c] 42)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         let result = eval(env, value);
@@ -2010,7 +1902,7 @@ mod tests {
     fn assoc_in_existing_map() {
         let env = create_env();
         let input = "(assoc-in {:x {:y 1}} [:x :z] 2)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         let result = eval(env, value);
@@ -2037,7 +1929,7 @@ mod tests {
     fn assoc_in_vector() {
         let env = create_env();
         let input = "(assoc-in [1 2 3] [1] 99)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         let result = eval(env, value);
@@ -2056,7 +1948,7 @@ mod tests {
     fn assoc_in_nil_input() {
         let env = create_env();
         let input = "(assoc-in nil [:a :b] 1)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         let result = eval(env, value);
@@ -2081,7 +1973,7 @@ mod tests {
     fn assoc_in_mixed_map_vector() {
         let env = create_env();
         let input = "(assoc-in {:names [\"foo\" :bar {:qux :zap}]} [:names 2 :whirlwind] 99)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         let result = eval(env, value);
@@ -2117,7 +2009,7 @@ mod tests {
     fn assoc_in_empty_path_on_map() {
         let env = create_env();
         let input = "(assoc-in {:a 1} [] 99)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         let result = eval(env, value);
@@ -2138,7 +2030,7 @@ mod tests {
     fn assoc_in_empty_path_on_vector() {
         let env = create_env();
         let input = "(assoc-in [:a 1] [] 99)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         let _result = eval(env, value);
@@ -2149,7 +2041,7 @@ mod tests {
     fn assoc_in_vector_out_of_bounds() {
         let env = create_env();
         let input = "(assoc-in [:a 1] [8] 99)";
-        let read_output = read_one_v2(env.clone(), input).expect("failed to read");
+        let read_output = read(env.clone(), input).expect("failed to read");
         let value = read_output.1.expect("no value read");
 
         let _result = eval(env, value);

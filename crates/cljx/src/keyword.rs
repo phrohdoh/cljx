@@ -3,6 +3,8 @@
 
 use ::std::fmt;
 
+pub mod optics;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Keyword {
     Unqualified(KeywordUnqualified),

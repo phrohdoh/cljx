@@ -1,6 +1,6 @@
-use std::{cell::RefCell, hash::{Hasher, Hash}};
-use std::rc::Rc;
-use std::collections::HashSet;
+use ::std::{cell::RefCell, hash::{Hasher, Hash}};
+use ::std::rc::Rc;
+use ::std::collections::HashSet;
 use crate::prelude::*;
 
 pub type RcVar = Rc<Var>;

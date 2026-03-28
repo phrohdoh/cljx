@@ -1,7 +1,14 @@
-use core::{cmp, fmt, hash, iter};
-use std::rc::Rc;
+use ::core::{cmp, fmt, hash, iter};
+use ::std::rc::Rc;
 use crate::prelude::*;
 
+
+pub fn box_fn(
+    arity: FunctionArity,
+    func: impl Fn(RcEnvironment, Vec<RcValue>) -> RcValue + 'static,
+) -> (FunctionArity, Box<dyn Fn(RcEnvironment, Vec<RcValue>) -> RcValue>) {
+    (arity, Box::new(func))
+}
 
 pub fn build_function(
     name: &str,
@@ -204,6 +211,23 @@ impl FunctionBuilder {
         self
     }
 
+    pub fn with_body<F>(
+        self,
+        arity: FunctionArity,
+        func: F,
+    ) -> Self
+    where
+        F: IFunction + 'static
+    {
+        let rc_func = Rc::new(func);
+        let mut new_bodies = self.bodies;
+        new_bodies.push((arity, rc_func));
+        Self {
+            name: self.name,
+            bodies: new_bodies,
+        }
+    }
+
     pub fn clear_bodies(&mut self) -> &mut Self {
         self.bodies.clear();
         self
@@ -361,7 +385,7 @@ impl Ord for Function {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
+    use ::std::rc::Rc;
 
     #[allow(dead_code)] // inner value is never used
     struct Dummy(&'static str);

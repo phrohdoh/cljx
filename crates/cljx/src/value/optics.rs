@@ -182,6 +182,16 @@ pub fn view_keyword(value: &Value) -> Option<Keyword> {
     }
 }
 
+/// View the [`Keyword`] within a [`Value::Keyword`], returning `None` if the variant doesn't match.
+pub fn view_keyword_ref(value: &Value) -> Option<&Keyword> {
+    if let Value::Keyword(k, _) = value {
+        Some(k)
+    } else {
+        None
+    }
+}
+
+
 /// Set a [`Keyword`] value, preserving metadata from the original `Value`.
 /// Returns `None` if the `Value` is not a [`Value::Keyword`].
 pub fn set_keyword(value: &Value, k: Keyword) -> Option<Value> {
@@ -350,6 +360,14 @@ pub fn view_function(value: &Value) -> Option<RcFunction> {
     }
 }
 
+pub fn view_function_ref(value: &Value) -> Option<&Function> {
+    if let Value::Function(function, _) = value {
+        Some(function.as_ref())
+    } else {
+        None
+    }
+}
+
 /// Set an [`RcFunction`] value, preserving metadata from the original `Value`.
 /// Returns `None` if the `Value` is not a [`Value::Function`].
 pub fn set_function(value: &Value, f: RcFunction) -> Option<Value> {
@@ -365,6 +383,15 @@ pub fn set_function(value: &Value, f: RcFunction) -> Option<Value> {
 pub fn view_handle(value: &Value) -> Option<Handle> {
     if let Value::Handle(h, _) = value {
         Some(h.clone())
+    } else {
+        None
+    }
+}
+
+/// View the [`Handle`] within a [`Value::Handle`], returning `None` if the variant doesn't match.
+pub fn view_handle_ref(value: &Value) -> Option<&Handle> {
+    if let Value::Handle(handle, _) = value {
+        Some(handle)
     } else {
         None
     }
