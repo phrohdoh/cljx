@@ -79,8 +79,24 @@ pub fn resolve_or_panic(
     env: RcEnvironment,
     symbol: &Symbol,
 ) -> RcVar {
-    try_resolve(env, symbol)
-        .expect(&format!("could not resolve: {}", symbol))
+    match symbol {
+        Symbol::Qualified(sym) => {
+            log::warn!("Resolving qualified symbol: {}", sym);
+            env.try_get_namespace(sym.namespace())
+                .ok_or_else(|| ResolveError::NoSuchNamespace(SymbolUnqualified::new(sym.namespace())))
+                .expect(&format!("could not find namespace: {}", sym.namespace()))
+                .try_get_var(sym.name())
+                .expect(&format!("could not resolve var: {}", sym))
+        },
+        Symbol::Unqualified(sym) => {
+            log::warn!("Resolving unqualified symbol: {}", sym);
+            env.try_get_current_namespace()
+               .map_err(|_| ResolveError::UnknownCurrentNamespace)
+               .expect(&format!("could not determine current namespace"))
+               .try_get_var(sym.name())
+               .expect(&format!("could not resolve var: {}", sym))
+        },
+    }
 }
 
 #[derive(Debug, Clone)]

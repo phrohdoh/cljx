@@ -283,7 +283,7 @@ fn create_env() -> RcEnvironment {
                     })
                     .collect::<Vec<_>>()
                 ),
-                    _ => panic!("map expects a list, vector, set, or map as the second argument, but got: {:?}", coll),
+                    _ => panic!("clojure.core/map requires a list, vector, set, or map as the second argument, but got: {:?}", coll),
                 }
             }),
         ],
@@ -349,7 +349,7 @@ fn create_env() -> RcEnvironment {
         vec![
             closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| {
                 let symbol = value::optics::view_symbol(args[0].as_ref())
-                    .unwrap_or_else(|| panic!("resolve expects a symbol argument, but got: {:?}", args[0]));
+                    .unwrap_or_else(|| panic!("clojure.core/resolve requires a symbol argument, but got: {:?}", args[0]));
                 let var = try_resolve(env, &symbol).expect(&format!("unable to resolve: {}", symbol));
                 Rc::new(Value::var(var))
             }),
@@ -412,7 +412,7 @@ fn create_env() -> RcEnvironment {
         "ns-map",
         vec![
             closure_fn(FunctionArity::AtLeast(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                let ns_sym = value::optics::view_symbol(args.first().expect("ns-map requires at least one argument: the namespace to map").as_ref())
+                let ns_sym = value::optics::view_symbol(args.first().expect("clojure.core/ns-map requires at least one argument: the namespace to map").as_ref())
                     .expect("ns-map first argument must be a symbol naming the namespace to map");
                 let ns = env.get_namespace_or_panic(ns_sym.name());
                 Rc::new(Value::map_from(
@@ -827,13 +827,13 @@ fn create_env() -> RcEnvironment {
                 let m = args[0].to_owned();
                 // Validate even number of key-value pairs
                 if (args.len() - 1) % 2 != 0 {
-                    panic!("clojure.core/assoc expects an even number of key-value arguments");
+                    panic!("clojure.core/assoc requires an even number of key-value arguments");
                 }
                 let m = match m.as_ref() {
                     Value::Nil(meta) => Rc::new(Value::new_map_empty().with_meta(meta.clone())),
                     Value::Map(..) => m,
                     Value::Vector(..) => m,
-                    _ => panic!("clojure.core/assoc expects a nil, map, or vector as the first argument"),
+                    _ => panic!("clojure.core/assoc requires a nil, map, or vector as the first argument"),
                 };
                 match m.as_ref() {
                     Value::Map(map, meta) => {
@@ -871,7 +871,7 @@ fn create_env() -> RcEnvironment {
 
                 // Extract keys vector and panic if not a vector
                 let ks_vec = value::optics::view_vector_ref(ks_arg.as_ref())
-                    .expect("assoc-in expects a vector of keys");
+                    .expect("clojure.core/assoc-in requires a vector of keys");
 
                 // Convert to Vec for easier indexing
                 let ks: Vec<RcValue> = ks_vec.iter().cloned().collect();
@@ -1074,7 +1074,7 @@ fn add_cljx_core(
         "my-macro",
         vec![
             closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
-                let sym = value::optics::view_symbol(args.get(0).unwrap()).unwrap();
+                let sym = value::optics::view_symbol(args.get(0).unwrap()).expect(&format!("cljx.core/my-macro requires a symbol argument, but got: {}", args[0]));
                 Value::string_rc(sym.name().to_owned())
             }),
         ],
@@ -1682,7 +1682,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "assoc expects an even number of key-value arguments")]
+    #[should_panic(expected = "assoc requires an even number of key-value arguments")]
     fn assoc_odd_arguments() {
         // arrange
         let env = create_env();
