@@ -1,6 +1,6 @@
 use crate::prelude::*;
 
-pub fn view_unqualified(keyword: Keyword) -> Option<KeywordUnqualified> {
+pub fn preview_unqualified(keyword: Keyword) -> Option<KeywordUnqualified> {
     match keyword {
         Keyword::Unqualified(keyword) => Some(keyword),
         _ => None,
@@ -14,7 +14,7 @@ pub fn view_unqualified_ref(keyword: &Keyword) -> Option<&KeywordUnqualified> {
     }
 }
 
-pub fn view_qualified(keyword: Keyword) -> Option<KeywordQualified> {
+pub fn preview_qualified(keyword: Keyword) -> Option<KeywordQualified> {
     match keyword {
         Keyword::Qualified(keyword) => Some(keyword),
         _ => None,

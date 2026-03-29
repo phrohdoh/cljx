@@ -14,6 +14,6 @@ pub mod namespace;
 pub mod environment;
 pub mod read;
 pub mod read2;
-pub mod optics;
+pub mod prism;
 pub mod core;
 pub mod prelude;

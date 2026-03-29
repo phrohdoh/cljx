@@ -31,11 +31,6 @@ pub fn set(value: &Value, v: Vector) -> Option<Value> {
     }
 }
 
-/// Create a prism focusing on the Vector variant of a Value.
-pub fn prism() -> Prism<Value, Vector> {
-    Prism::new(view, set)
-}
-
 // =============================================================================
 // Element access helpers for Vectors
 // =============================================================================

@@ -86,7 +86,8 @@ mod tests {
         let value_var = Value::Var(var.clone(), var.meta());
 
         // Extract metadata from the wrapper using value optics
-        let wrapper_meta = crate::value::optics::meta(&value_var);
+        let wrapper_meta = value::optics::preview_meta_ref(&value_var);
+        let wrapper_meta = Option::unwrap(wrapper_meta);
 
         // At creation time, both point to the same metadata
         assert_eq!(wrapper_meta.get(&key1), Some(value1.clone()));

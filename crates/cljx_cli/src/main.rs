@@ -181,11 +181,11 @@ fn create_env() -> RcEnvironment {
                 if any_arg_is_float {
                     let mut x = 0f64;
                     for arg in args {
-                        let arg_integer = value::optics::view_integer(arg.as_ref());
-                        let arg_float   = value::optics::view_float(arg.as_ref());
+                        let arg_integer = value::optics::preview_integer(arg.as_ref());
+                        let arg_float   = value::optics::preview_float(arg.as_ref());
                         match (arg_integer, arg_float) {
                             (Some(int), None) => x += int as f64,
-                            (None, Some(float)) => x += float.as_f64(),
+                            (None, Some(float)) => x += float,
                             (Some(_), Some(_)) => unreachable!("value cannot be both integer and float"),
                             (None, None) => panic!("clojure.core/+ only supports integer and float arguments, but got: {:?}", arg),
                         }
@@ -194,7 +194,7 @@ fn create_env() -> RcEnvironment {
                 } else {
                     let mut x = 0i64;
                     for arg in args {
-                        let arg_integer = value::optics::view_integer(arg.as_ref()).unwrap();
+                        let arg_integer = value::optics::preview_integer(arg.as_ref()).unwrap();
                         x += arg_integer;
                     }
                     Rc::new(Value::integer(x))
@@ -216,8 +216,8 @@ fn create_env() -> RcEnvironment {
                 // if any_arg_is_float {
                 //     let mut x = 0f64;
                 //     for arg in args {
-                //         let arg_integer = value::optics::view_integer(arg.as_ref());
-                //         let arg_float   = value::optics::view_float(arg.as_ref());
+                //         let arg_integer = value::optics::preview_integer(arg.as_ref());
+                //         let arg_float   = value::optics::preview_float(arg.as_ref());
                 //         match (arg_integer, arg_float) {
                 //             (Some(int), None) => x -= int as f64,
                 //             (None, Some(float)) => x -= float.as_f64(),
@@ -229,7 +229,7 @@ fn create_env() -> RcEnvironment {
                 // } else {
                 //     let mut x = 0i64;
                 //     for arg in args {
-                //         let arg_integer = value::optics::view_integer(arg.as_ref()).unwrap();
+                //         let arg_integer = value::optics::preview_integer(arg.as_ref()).unwrap();
                 //         x += arg_integer;
                 //     }
                 //     Rc::new(Value::integer(x))
@@ -239,20 +239,20 @@ fn create_env() -> RcEnvironment {
                 if any_arg_is_float {
                     let mut x = 0f64;
                     for arg in args {
-                        let arg_integer = value::optics::view_integer(arg.as_ref());
-                        let arg_float   = value::optics::view_float(arg.as_ref());
+                        let arg_integer = value::optics::preview_integer(arg.as_ref());
+                        let arg_float   = value::optics::preview_float(arg.as_ref());
                         match (arg_integer, arg_float) {
                             (Some(int), None) => x -= int as f64,
-                            (None, Some(float)) => x -= float.as_f64(),
+                            (None, Some(float)) => x -= float,
                             (Some(_), Some(_)) => unreachable!("value cannot be both integer and float"),
                             (None, None) => panic!("clojure.core/- only supports integer and float arguments, but got: {:?}", arg),
                         }
                     }
                     Rc::new(Value::float(x.into()))
                 } else {
-                    let mut x = value::optics::view_integer(args[0].as_ref()).unwrap();
+                    let mut x = value::optics::preview_integer(args[0].as_ref()).unwrap();
                     for arg in args.iter().skip(1) {
-                        let arg_integer = value::optics::view_integer(arg.as_ref()).unwrap();
+                        let arg_integer = value::optics::preview_integer(arg.as_ref()).unwrap();
                         x -= arg_integer;
                     }
                     Rc::new(Value::integer(x))
@@ -329,13 +329,13 @@ fn create_env() -> RcEnvironment {
         "symbol",
         vec![
             closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
-                let name = value::optics::view_string(args[0].as_ref())
+                let name = value::optics::preview_string(args[0].as_ref())
                     .unwrap_or_else(|| panic!("symbol name must be a string, got {:?}", args[0]));
                 Rc::new(Value::symbol_unqualified(&name))
             }), closure_fn(FunctionArity::Exactly(2), |_env: RcEnvironment, args: Vec<RcValue>| {
-                let ns_name = value::optics::view_string(args[0].as_ref())
+                let ns_name = value::optics::preview_string(args[0].as_ref())
                     .unwrap_or_else(|| panic!("symbol namespace must be a string, got {:?}", args[0]));
-                let name = value::optics::view_string(args[1].as_ref())
+                let name = value::optics::preview_string(args[1].as_ref())
                     .unwrap_or_else(|| panic!("symbol name must be a string, got {:?}", args[1]));
                 Rc::new(Value::symbol_qualified(&ns_name, &name))
             }),
@@ -348,7 +348,7 @@ fn create_env() -> RcEnvironment {
         "resolve",
         vec![
             closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| {
-                let symbol = value::optics::view_symbol(args[0].as_ref())
+                let symbol = value::optics::preview_symbol(args[0].as_ref())
                     .unwrap_or_else(|| panic!("clojure.core/resolve requires a symbol argument, but got: {:?}", args[0]));
                 let var = try_resolve(env, &symbol).expect(&format!("unable to resolve: {}", symbol));
                 Rc::new(Value::var(var))
@@ -362,7 +362,7 @@ fn create_env() -> RcEnvironment {
         vec![
             closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<Rc<Value>>| {
                 let derefee = args.first().unwrap().to_owned();
-                value::optics::view_var(derefee.as_ref())
+                value::optics::preview_var(derefee.as_ref())
                     .and_then(|var| var.deref())
                     .map(|v| v.clone())
                     .unwrap_or(derefee)
@@ -412,7 +412,7 @@ fn create_env() -> RcEnvironment {
         "ns-map",
         vec![
             closure_fn(FunctionArity::AtLeast(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                let ns_sym = value::optics::view_symbol(args.first().expect("clojure.core/ns-map requires at least one argument: the namespace to map").as_ref())
+                let ns_sym = value::optics::preview_symbol(args.first().expect("clojure.core/ns-map requires at least one argument: the namespace to map").as_ref())
                     .expect("ns-map first argument must be a symbol naming the namespace to map");
                 let ns = env.get_namespace_or_panic(ns_sym.name());
                 Rc::new(Value::map_from(
@@ -433,7 +433,7 @@ fn create_env() -> RcEnvironment {
             closure_fn(FunctionArity::AtLeast(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns_name_symbol = args.first()
                     .expect("ns-map requires at least one argument: an unqualified symbol naming the namespace to introspect");
-                let ns_name_symbol = value::optics::view_symbol(ns_name_symbol.as_ref())
+                let ns_name_symbol = value::optics::preview_symbol(ns_name_symbol.as_ref())
                     .expect("ns-map's argument must be an unqualified symbol naming the namespace to introspect");
                 let ns_name = ns_name_symbol.name();
                 let ns = env.get_namespace_or_panic(ns_name);
@@ -456,7 +456,7 @@ fn create_env() -> RcEnvironment {
         "in-ns",
         vec![
             closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                let sym = value::optics::view_symbol(args[0].as_ref())
+                let sym = value::optics::preview_symbol(args[0].as_ref())
                     .expect("in-ns argument must be a symbol");
                 let ns = env.create_namespace(sym.name());
                 env.get_namespace_or_panic("clojure.core")
@@ -471,7 +471,7 @@ fn create_env() -> RcEnvironment {
         "create-ns",
         vec![
             closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                let sym = value::optics::view_symbol(args[0].as_ref())
+                let sym = value::optics::preview_symbol(args[0].as_ref())
                     .expect("create-ns argument must be a symbol");
                 let ns = env.create_namespace(sym.name());
                 Rc::new(Value::handle(Handle::new(ns)))
@@ -484,7 +484,7 @@ fn create_env() -> RcEnvironment {
         "find-ns",
         vec![
             closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                let sym = value::optics::view_symbol(args[0].as_ref())
+                let sym = value::optics::preview_symbol(args[0].as_ref())
                     .expect("find-ns argument must be a symbol");
                 match env.try_get_namespace(sym.name()) {
                     Some(ns) => Rc::new(Value::handle(Handle::new(ns))),
@@ -591,7 +591,7 @@ fn create_env() -> RcEnvironment {
             closure_fn(FunctionArity::Exactly(2), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-resolve first argument must be a namespace handle");
-                let sym = value::optics::view_symbol(args[1].as_ref())
+                let sym = value::optics::preview_symbol(args[1].as_ref())
                     .expect("ns-resolve second argument must be a symbol");
                 match &sym {
                     Symbol::Unqualified(s) => match ns.try_get_var(s.name()) {
@@ -616,13 +616,13 @@ fn create_env() -> RcEnvironment {
         "resolve",
         vec![
             closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                //let sym = value::optics::view_symbol(&args[0])
+                //let sym = value::optics::preview_symbol(&args[0])
                 //    .map(|sym| cljx::core::try_resolve(env.clone(), sym))
                 //    .unwrap_or_else(|| Ok(Value::nil_rc()));
                 let current_ns = env.get_namespace_or_panic("clojure.core")
                     .try_get_handle::<RcNamespace>("*ns*")
                     .expect("*ns* must be a namespace handle");
-                let sym = value::optics::view_symbol(args[0].as_ref())
+                let sym = value::optics::preview_symbol(args[0].as_ref())
                     .expect("resolve argument must be a symbol");
                 match &sym {
                     Symbol::Unqualified(s) => match current_ns.try_get_var(s.name()) {
@@ -647,7 +647,7 @@ fn create_env() -> RcEnvironment {
         "remove-ns",
         vec![
             closure_fn(FunctionArity::Exactly(1), |env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
-                let sym = value::optics::view_symbol(args[0].as_ref())
+                let sym = value::optics::preview_symbol(args[0].as_ref())
                     .expect("remove-ns argument must be a symbol");
                 env.remove_namespace(sym.name());
                 Value::nil_rc()
@@ -662,7 +662,7 @@ fn create_env() -> RcEnvironment {
             closure_fn(FunctionArity::Exactly(2), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-unalias first argument must be a namespace handle");
-                let alias = value::optics::view_symbol(args[1].as_ref())
+                let alias = value::optics::preview_symbol(args[1].as_ref())
                     .expect("ns-unalias second argument must be a symbol");
                 ns.remove_alias(alias.name());
                 Value::nil_rc()
@@ -677,7 +677,7 @@ fn create_env() -> RcEnvironment {
             closure_fn(FunctionArity::Exactly(2), |_env: RcEnvironment, args: Vec<RcValue>| -> RcValue {
                 let ns = args[0].try_get_handle::<RcNamespace>()
                     .expect("ns-unmap first argument must be a namespace handle");
-                let sym = value::optics::view_symbol(args[1].as_ref())
+                let sym = value::optics::preview_symbol(args[1].as_ref())
                     .expect("ns-unmap second argument must be a symbol");
                 ns.remove_var(sym.name());
                 Value::nil_rc()
@@ -694,12 +694,12 @@ fn create_env() -> RcEnvironment {
                 let ns = match args[0].try_get_handle::<RcNamespace>() {
                     Ok(ns) => ns,
                     Err(_) => {
-                        let sym = value::optics::view_symbol(args[0].as_ref())
+                        let sym = value::optics::preview_symbol(args[0].as_ref())
                             .expect("intern first arg must be a namespace handle or symbol");
                         env.get_namespace_or_panic(sym.name())
                     }
                 };
-                let var_sym = value::optics::view_symbol(args[1].as_ref())
+                let var_sym = value::optics::preview_symbol(args[1].as_ref())
                     .expect("intern second argument must be a symbol");
                 let var = match ns.try_get_var(var_sym.name()) {
                     Ok(existing) => existing,
@@ -714,12 +714,12 @@ fn create_env() -> RcEnvironment {
                 let ns = match args[0].try_get_handle::<RcNamespace>() {
                     Ok(ns) => ns,
                     Err(_) => {
-                        let sym = value::optics::view_symbol(args[0].as_ref())
+                        let sym = value::optics::preview_symbol(args[0].as_ref())
                             .expect("intern first arg must be a namespace handle or symbol");
                         env.get_namespace_or_panic(sym.name())
                     }
                 };
-                let var_sym = value::optics::view_symbol(args[1].as_ref())
+                let var_sym = value::optics::preview_symbol(args[1].as_ref())
                     .expect("intern second argument must be a symbol");
                 let var = match ns.try_get_var(var_sym.name()) {
                     Ok(existing) => existing,
@@ -741,7 +741,8 @@ fn create_env() -> RcEnvironment {
         vec![
             closure_fn(FunctionArity::Exactly(1), |_env, args: Vec<_>| {
                 let obj = args.first().unwrap();
-                value::optics::view_meta(obj)
+                value::optics::preview_meta(obj)
+                    .map(|x| x.as_ref().clone())
                     .map(Value::map_rc)
                     .unwrap_or_else(Value::nil_rc)
             }),
@@ -756,7 +757,7 @@ fn create_env() -> RcEnvironment {
                 let mut args = args.into_iter();
                 let value = args.next().unwrap();
                 let meta = args.next().unwrap();
-                let meta = value::optics::view_map(meta.as_ref()).expect("with-meta meta argument must be a map");
+                let meta = value::optics::preview_map(meta.as_ref()).expect("with-meta meta argument must be a map");
                 value.with_meta_rc(Some(Rc::new(meta)))
             }),
         ],
@@ -786,7 +787,7 @@ fn create_env() -> RcEnvironment {
                 Value::Nil(_) => m,
                 Value::Vector(vector, _) => {
                     let expect_message = format!("clojure.core/get vector branch: key is not an integer >= 0: {}", k.as_ref());
-                    let k = value::optics::view_integer(k.as_ref()).expect(&expect_message) as usize;
+                    let k = value::optics::preview_integer(k.as_ref()).expect(&expect_message) as usize;
                     vector.get_nth_or(k, d)
                 },
                 Value::Map(map, _) => map.get_or(&k, d),
@@ -805,7 +806,7 @@ fn create_env() -> RcEnvironment {
                 let m = args.next().unwrap();
                 if m.is_nil() { return m; }
                 let ks = args.next().unwrap();
-                let ks = value::optics::view_vector_ref(ks.as_ref()).unwrap();
+                let ks = value::optics::preview_vector_ref(ks.as_ref()).unwrap();
                 if ks.len() == 0 { return m; }
                 let ks = ks.iter().into_iter().map(RcValue::clone);
                 let get_fn = env.get_namespace_or_panic("clojure.core").get_function_or_panic("get");
@@ -870,7 +871,7 @@ fn create_env() -> RcEnvironment {
                 let v = args[2].to_owned();
 
                 // Extract keys vector and panic if not a vector
-                let ks_vec = value::optics::view_vector_ref(ks_arg.as_ref())
+                let ks_vec = value::optics::preview_vector_ref(ks_arg.as_ref())
                     .expect("clojure.core/assoc-in requires a vector of keys");
 
                 // Convert to Vec for easier indexing
@@ -893,7 +894,7 @@ fn create_env() -> RcEnvironment {
                         Value::Vector(_vec, _) => {
                             // For vectors, nil is not a valid integer key
                             let err_msg = format!("Key must be integer");
-                            let _ = value::optics::view_integer(nil_key.as_ref())
+                            let _ = value::optics::preview_integer(nil_key.as_ref())
                                 .expect(&err_msg);
                             todo!()
                         }
@@ -932,7 +933,7 @@ fn create_env() -> RcEnvironment {
                             }
                             Value::Vector(vec, meta) => {
                                 let err_msg = format!("Key must be integer: {}", first_key.as_ref());
-                                let idx = value::optics::view_integer(first_key.as_ref())
+                                let idx = value::optics::preview_integer(first_key.as_ref())
                                     .expect(&err_msg) as usize;
 
                                 // Panic if index is out of bounds (matching Babashka behavior)
@@ -1074,7 +1075,7 @@ fn add_cljx_core(
         "my-macro",
         vec![
             closure_fn(FunctionArity::Exactly(1), |_env: RcEnvironment, args: Vec<RcValue>| {
-                let sym = value::optics::view_symbol(args.get(0).unwrap()).expect(&format!("cljx.core/my-macro requires a symbol argument, but got: {}", args[0]));
+                let sym = value::optics::preview_symbol(args.get(0).unwrap()).expect(&format!("cljx.core/my-macro requires a symbol argument, but got: {}", args[0]));
                 Value::string_rc(sym.name().to_owned())
             }),
         ],
@@ -1204,14 +1205,14 @@ fn demo_optics(
         clojure_core.bind_value_rc("*test-input*", test_input.clone());
         let ret = clojure_core.get_function_or_panic("eval")
             .invoke(env.clone(), vec![test_expr.clone()]);
-        use value::optics::meta_ref;
+        use value::optics::preview_meta_ref;
 
         println!();
         println!(";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;");
         println!();
 
         println!("*test-input* ;; => {test_input}");
-        match meta_ref(&test_input).as_ref() {
+        match preview_meta_ref(&test_input).as_ref() {
             Some(meta) => println!("(meta *test-input*) ;; => {meta}"),
             None       => println!("(meta *test-input*) ;; => nil"),
         }
@@ -1220,7 +1221,7 @@ fn demo_optics(
         //     Value::List(input, _) => {
         //         for (idx, value) in input.iter().enumerate() {
         //             println!("(get-in *test-input* [{idx}]) ;; => {value}");
-        //             match meta_ref(&value).as_ref() {
+        //             match preview_meta_ref(&value).as_ref() {
         //                 Some(meta) => println!("(meta (get-in *test-input* [{idx}])) ;; => {meta}"),
         //                 None       => println!("(meta (get-in *test-input* [{idx}])) ;; => nil"),
         //             }
@@ -1229,7 +1230,7 @@ fn demo_optics(
         //     Value::Vector(input, _) => {
         //         for (idx, value) in input.iter().enumerate() {
         //             println!("(get-in *test-input* [{idx}]) ;; => {value}");
-        //             match meta_ref(&value).as_ref() {
+        //             match preview_meta_ref(&value).as_ref() {
         //                 Some(meta) => println!("(meta (get-in *test-input* [{idx}])) ;; => {meta}"),
         //                 None       => println!("(meta (get-in *test-input* [{idx}])) ;; => nil"),
         //             }
@@ -1241,7 +1242,7 @@ fn demo_optics(
         println!();
 
         println!("*test-expr* ;; => {test_expr}");
-        match meta_ref(&test_expr).as_ref() {
+        match preview_meta_ref(&test_expr).as_ref() {
             Some(meta) => println!("(meta *test-expr*) ;; => {meta}"),
             None       => println!("(meta *test-expr*) ;; => nil"),
         }
@@ -1249,7 +1250,7 @@ fn demo_optics(
         println!();
 
         println!("expected ;; => {expected}");
-        match meta_ref(&expected).as_ref() {
+        match preview_meta_ref(&expected).as_ref() {
             Some(meta) => println!("(meta expected) ;; => {meta}"),
             None       => println!("(meta expected) ;; => nil"),
         }
@@ -1257,7 +1258,7 @@ fn demo_optics(
         println!();
 
         println!("ret ;; => {ret}");
-        match meta_ref(&ret).as_ref() {
+        match preview_meta_ref(&ret).as_ref() {
             Some(meta) => println!("(meta ret) ;; => {meta}"),
             None       => println!("(meta ret) ;; => nil"),
         }
@@ -1273,9 +1274,9 @@ fn demo_optics(
         assert_eq!(ret, expected);
     }
 
-    // use value::optics::view_vector_ref;
+    // use value::optics::preview_vector_ref;
     // use vector::partials::{get_nth as vector_get_nth};
-    // use value::optics::view_list_ref;
+    // use value::optics::preview_list_ref;
     // use list::partials::{get_nth as list_get_nth};
     // let input = args.first().map(AsRef::as_ref).unwrap_or("[:foo :bar (:baz [:qux])]");
     // let input = read(Environment::new_empty_rc(), input).unwrap().1.unwrap();
@@ -2116,7 +2117,7 @@ mod tests {
         let ns_name_func = clojure_core.get_function_or_panic("ns-name");
         let result = ns_name_func.invoke(env.clone(), vec![ns_handle]);
 
-        let sym = value::optics::view_symbol(result.as_ref())
+        let sym = value::optics::preview_symbol(result.as_ref())
             .expect("ns-name should return a symbol");
         assert_eq!(sym.name(), "clojure.core");
     }
@@ -2134,7 +2135,7 @@ mod tests {
             .expect("*ns* should exist");
         let result = ns_name_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let sym = value::optics::view_symbol(result.as_ref())
+        let sym = value::optics::preview_symbol(result.as_ref())
             .expect("ns-name should return a symbol");
         assert_eq!(sym.name(), "foo.bar");
     }
@@ -2159,7 +2160,7 @@ mod tests {
         let ns_publics_func = clojure_core.get_function_or_panic("ns-publics");
         let result = ns_publics_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let map = value::optics::view_map(result.as_ref())
+        let map = value::optics::preview_map(result.as_ref())
             .expect("ns-publics should return a map");
         let key = Rc::new(Value::symbol_unqualified("testpub"));
         assert!(map.get(&key).is_some());
@@ -2177,7 +2178,7 @@ mod tests {
             .expect("*ns* should exist");
         let result = ns_publics_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let map = value::optics::view_map(result.as_ref())
+        let map = value::optics::preview_map(result.as_ref())
             .expect("ns-publics should return a map");
         let key = Rc::new(Value::symbol_unqualified("referred-var"));
         assert!(map.get(&key).is_none());
@@ -2194,7 +2195,7 @@ mod tests {
             .expect("*ns* should exist");
         let result = ns_imports_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let map = value::optics::view_map(result.as_ref())
+        let map = value::optics::preview_map(result.as_ref())
             .expect("ns-imports should return a map");
         assert!(map.is_empty());
     }
@@ -2210,11 +2211,11 @@ mod tests {
             .expect("*ns* should exist");
         let result = ns_imports_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let map = value::optics::view_map(result.as_ref())
+        let map = value::optics::preview_map(result.as_ref())
             .expect("ns-imports should return a map");
         let key = Rc::new(Value::symbol_unqualified("MyClass"));
         let val = map.get(&key).expect("MyClass key should exist");
-        let fqn = value::optics::view_string(val.as_ref())
+        let fqn = value::optics::preview_string(val.as_ref())
             .expect("value should be a string");
         assert_eq!(fqn, "com.example.MyClass");
     }
@@ -2230,7 +2231,7 @@ mod tests {
             .expect("*ns* should exist");
         let result = ns_aliases_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let map = value::optics::view_map(result.as_ref())
+        let map = value::optics::preview_map(result.as_ref())
             .expect("ns-aliases should return a map");
         assert!(map.is_empty());
     }
@@ -2247,7 +2248,7 @@ mod tests {
             .expect("*ns* should exist");
         let result = ns_aliases_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let map = value::optics::view_map(result.as_ref())
+        let map = value::optics::preview_map(result.as_ref())
             .expect("ns-aliases should return a map");
         let key = Rc::new(Value::symbol_unqualified("foo"));
         assert!(map.get(&key).is_some());
@@ -2264,7 +2265,7 @@ mod tests {
             .expect("*ns* should exist");
         let result = ns_refers_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let map = value::optics::view_map(result.as_ref())
+        let map = value::optics::preview_map(result.as_ref())
             .expect("ns-refers should return a map");
         assert!(map.is_empty());
     }
@@ -2281,7 +2282,7 @@ mod tests {
             .expect("*ns* should exist");
         let result = ns_refers_func.invoke(env.clone(), vec![Rc::new(Value::handle(Handle::new(current_ns)))]);
 
-        let map = value::optics::view_map(result.as_ref())
+        let map = value::optics::preview_map(result.as_ref())
             .expect("ns-refers should return a map");
         let key = Rc::new(Value::symbol_unqualified("bar"));
         assert!(map.get(&key).is_some());
@@ -2314,7 +2315,7 @@ mod tests {
         match result.as_ref() {
             Value::Var(var, _) => {
                 let deref = var.deref().expect("var should be bound");
-                let n = value::optics::view_integer(deref.as_ref())
+                let n = value::optics::preview_integer(deref.as_ref())
                     .expect("should be an integer");
                 assert_eq!(n, 42);
             }
@@ -2542,7 +2543,7 @@ mod tests {
         match result.as_ref() {
             Value::Var(var, _) => {
                 let deref = var.deref().expect("var should be bound");
-                let n = value::optics::view_integer(deref.as_ref())
+                let n = value::optics::preview_integer(deref.as_ref())
                     .expect("should be an integer");
                 assert_eq!(n, 99);
             }
@@ -2597,7 +2598,7 @@ mod tests {
         match result2.as_ref() {
             Value::Var(var, _) => {
                 let deref = var.deref().expect("var should be bound");
-                let n = value::optics::view_integer(deref.as_ref())
+                let n = value::optics::preview_integer(deref.as_ref())
                     .expect("should be an integer");
                 assert_eq!(n, 2);
             }

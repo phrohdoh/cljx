@@ -51,8 +51,8 @@ impl AnomalyMap {
         self.0.get(&Value::keyword_qualified_rc("cljx.anomalies", "category"))
               .as_ref()
               .map(RcValue::as_ref)
-              .and_then(value::optics::view_keyword)
-              .and_then(keyword::optics::view_unqualified)
+              .and_then(value::optics::preview_keyword)
+              .and_then(keyword::optics::preview_unqualified)
               .expect("anomaly is missing :cljx.anomalies/category")
     }
 
@@ -60,7 +60,7 @@ impl AnomalyMap {
         self.0.get(&Value::keyword_qualified_rc("cljx.anomalies", "message"))
               .as_ref()
               .map(RcValue::as_ref)
-              .and_then(value::optics::view_string)
+              .and_then(value::optics::preview_string)
               .expect("anomaly is missing :cljx.anomalies/message")
     }
 
@@ -273,19 +273,19 @@ impl Reader {
         let (remaining, elements) = parser(input)?;
 
         if let Some(head) = elements.first().map(RcValue::as_ref)
-                                    .and_then(value::optics::view_symbol) {
+                                    .and_then(value::optics::preview_symbol) {
             match head {
                 Symbol::Qualified(head) => {
                     log::warn!("Resolving qualified symbol: {}", head);
                     if let Some(var) = env.try_get_namespace(head.namespace())
                                           .and_then(|ns| ns.try_get_var(head.name()).ok()) {
                         let is_macro = var.get_meta(&Value::keyword_unqualified_rc("macro")).as_ref().map(RcValue::as_ref)
-                            .and_then(value::optics::view_boolean)
+                            .and_then(value::optics::preview_boolean)
                             .unwrap_or(false);
                         if is_macro {
                             if let Some(macro_func) = var.as_ref()
                                 .deref().as_ref().map(RcValue::as_ref)
-                                .and_then(value::optics::view_function) {
+                                .and_then(value::optics::preview_function) {
                                     let macro_ret = macro_func.invoke(env.clone(), elements.into_iter().skip(1).collect());
                                     return Ok((remaining, Some(macro_ret)));
                                 }
@@ -299,12 +299,12 @@ impl Reader {
                         .expect("current namespace not set, expected #'clojure.core/*ns* to be bound to a Value::Handle of Rc<Namespace>");
                     if let Some(var) = current_ns.try_get_var(head.name()).ok() {
                         let is_macro = var.get_meta(&Value::keyword_unqualified_rc("macro")).as_ref().map(RcValue::as_ref)
-                            .and_then(value::optics::view_boolean)
+                            .and_then(value::optics::preview_boolean)
                             .unwrap_or(false);
                         if is_macro {
                             if let Some(macro_func) = var.as_ref()
                                 .deref().as_ref().map(RcValue::as_ref)
-                                .and_then(value::optics::view_function) {
+                                .and_then(value::optics::preview_function) {
                                     let macro_ret = macro_func.invoke(env.clone(), elements.into_iter().skip(1).collect());
                                     return Ok((remaining, Some(macro_ret)));
                                 }

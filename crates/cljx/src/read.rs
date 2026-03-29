@@ -85,7 +85,7 @@ fn attach_position_to_value(
     value: RcValue,
     pos: SourcePosition,
 ) -> RcValue {
-    let mut meta = value::optics::meta(value.as_ref());
+    let mut meta = value::optics::preview_meta(value.as_ref());
 
     for (key, value) in [
         (SourcePosition::begin_line_key(),   pos.begin_line_value()),
@@ -358,7 +358,7 @@ mod v2_tests_inner {
     }
 
     fn get_source_position_from_value_meta(v: &Value) -> SourcePosition {
-        let meta_ref = Option::expect(value::optics::view_meta_ref(v), "meta should be present");
+        let meta_ref = Option::expect(value::optics::preview_meta_ref(v), "meta should be present");
 
         let begin_line_key   = SourcePosition::begin_line_key();
         let begin_column_key = SourcePosition::begin_column_key();
@@ -370,10 +370,10 @@ mod v2_tests_inner {
         let end_line_value     = Option::expect(meta_ref.get(&end_line_key),     &format!("end-line key should be in meta: {end_line_key}"));
         let end_column_value   = Option::expect(meta_ref.get(&end_column_key),   &format!("end-column key should be in meta: {end_column_key}"));
 
-        let begin_line_integer   = Option::expect(value::optics::view_integer(&begin_line_value),   &format!("begin_line value should be an integer, but was: {begin_line_value}"));
-        let begin_column_integer = Option::expect(value::optics::view_integer(&begin_column_value), &format!("begin_column value should be an integer, but was: {begin_column_value}"));
-        let end_line_integer     = Option::expect(value::optics::view_integer(&end_line_value),     &format!("end_line value should be an integer, but was: {end_line_value}"));
-        let end_column_integer   = Option::expect(value::optics::view_integer(&end_column_value),   &format!("end_column value should be an integer, but was: {end_column_value}"));
+        let begin_line_integer   = Option::expect(value::optics::preview_integer(&begin_line_value),   &format!("begin_line value should be an integer, but was: {begin_line_value}"));
+        let begin_column_integer = Option::expect(value::optics::preview_integer(&begin_column_value), &format!("begin_column value should be an integer, but was: {begin_column_value}"));
+        let end_line_integer     = Option::expect(value::optics::preview_integer(&end_line_value),     &format!("end_line value should be an integer, but was: {end_line_value}"));
+        let end_column_integer   = Option::expect(value::optics::preview_integer(&end_column_value),   &format!("end_column value should be an integer, but was: {end_column_value}"));
 
         SourcePosition {
             begin_line:   begin_line_integer   as usize,
@@ -415,12 +415,13 @@ mod v2_tests_inner {
         let value = &complete_read.value;
 
         // Extract meta from list
-        let _ = value::optics::view_list(value.as_ref()).expect("should be a list");
+        let _ = value::optics::preview_list(value.as_ref()).expect("should be a list");
 
         // Check position keys exist
         // - assert!(meta.is_some(), "meta should be present on list");
         // let meta_ref = meta.unwrap();
-        let meta_ref = value::optics::meta_ref(value.as_ref());
+        let meta_ref = value::optics::preview_meta_ref(value.as_ref());
+        let meta_ref = Option::unwrap(meta_ref);
 
         // Verify position information is in the meta
         let begin_line_value = meta_ref.get(&SourcePosition::begin_line_key());
@@ -707,7 +708,7 @@ pub mod parse {
             return Ok((remaining, Rc::new(Value::list(list))));
         }
         let head = list.get_first().unwrap();
-        let head = match value::optics::view_symbol(head.as_ref()) {
+        let head = match value::optics::preview_symbol(head.as_ref()) {
             None => return Ok((remaining, Rc::new(Value::list(list)))),
             Some(symbol) => symbol,
         };
@@ -716,9 +717,9 @@ pub mod parse {
         let head = resolve_func.invoke(env.clone(), vec![Rc::new(Value::symbol(head.clone()))]);
         if let Value::Var(var, Some(meta)) = head.as_ref() &&
             meta.get(&Value::keyword_unqualified_rc("macro")).as_deref()
-                .and_then(value::optics::view_boolean).is_some_and(|boolean| boolean)
+                .and_then(value::optics::preview_boolean).is_some_and(|boolean| boolean)
         {
-            if let Some(macro_impl) = var.deref().as_deref().and_then(value::optics::view_function_ref) {
+            if let Some(macro_impl) = var.deref().as_deref().and_then(value::optics::preview_function_ref) {
                 let expanded = macro_impl.invoke(env.clone(), list.iter().skip(1).cloned().collect());
                 Ok((remaining, expanded))
             } else {
@@ -804,7 +805,7 @@ mod tests {
         // - assert
         let (remaining, value) = result.expect("should parse unqualified symbol");
         assert!(remaining.is_empty());
-        let symbol = value::optics::view_symbol(value.as_ref()).expect("should be a symbol");
+        let symbol = value::optics::preview_symbol(value.as_ref()).expect("should be a symbol");
         assert!(symbol.is_unqualified(), "symbol should be unqualified");
         assert_eq!(symbol.name(), "hello");
         assert_eq!(symbol.namespace(), None);
@@ -820,7 +821,7 @@ mod tests {
         // - assert
         let (remaining, value) = result.expect("should parse qualified symbol");
         assert!(remaining.is_empty());
-        let symbol = value::optics::view_symbol(value.as_ref()).expect("should be a symbol");
+        let symbol = value::optics::preview_symbol(value.as_ref()).expect("should be a symbol");
         assert!(symbol.is_qualified(), "symbol should be qualified");
         assert_eq!(symbol.name(), "bar");
         assert_eq!(symbol.namespace(), Some("foo"));
@@ -836,7 +837,7 @@ mod tests {
         // - assert
         let (remaining, value) = result.expect("should parse slash as symbol");
         assert!(remaining.is_empty());
-        let symbol = value::optics::view_symbol(value.as_ref()).expect("should be a symbol");
+        let symbol = value::optics::preview_symbol(value.as_ref()).expect("should be a symbol");
         assert!(symbol.is_unqualified(), "/ should be an unqualified symbol");
         assert_eq!(symbol.name(), "/");
         assert_eq!(symbol.namespace(), None);
@@ -852,7 +853,7 @@ mod tests {
         // - assert
         let (remaining, value) = result.expect("should parse unqualified keyword");
         assert!(remaining.is_empty());
-        let keyword = value::optics::view_keyword(value.as_ref()).expect("should be a keyword");
+        let keyword = value::optics::preview_keyword(value.as_ref()).expect("should be a keyword");
         assert!(keyword.is_unqualified(), "keyword should be unqualified");
         assert_eq!(keyword.name(), "hello");
         assert_eq!(keyword.namespace(), None);
@@ -868,7 +869,7 @@ mod tests {
         // - assert
         let (remaining, value) = result.expect("should parse qualified keyword");
         assert!(remaining.is_empty());
-        let keyword = value::optics::view_keyword(value.as_ref()).expect("should be a keyword");
+        let keyword = value::optics::preview_keyword(value.as_ref()).expect("should be a keyword");
         assert!(keyword.is_qualified(), "keyword should be qualified");
         assert_eq!(keyword.name(), "bar");
         assert_eq!(keyword.namespace(), Some("foo"));
@@ -884,7 +885,7 @@ mod tests {
         // - assert
         let (remaining, value) = result.expect("should parse slash as keyword");
         assert!(remaining.is_empty());
-        let keyword = value::optics::view_keyword(value.as_ref()).expect("should be a keyword");
+        let keyword = value::optics::preview_keyword(value.as_ref()).expect("should be a keyword");
         assert!(keyword.is_unqualified(), ":/ should be an unqualified keyword");
         assert_eq!(keyword.name(), "/");
         assert_eq!(keyword.namespace(), None);
@@ -960,7 +961,7 @@ mod tests {
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list");
         assert!(remaining.is_empty());
-        let elements = value::optics::view_list(value.as_ref()).expect("should be a list");
+        let elements = value::optics::preview_list(value.as_ref()).expect("should be a list");
         assert!(elements.is_empty(), "list should be empty");
     }
 
@@ -971,7 +972,7 @@ mod tests {
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with space");
         assert!(remaining.is_empty());
-        let elements = value::optics::view_list(value.as_ref()).expect("should be a list");
+        let elements = value::optics::preview_list(value.as_ref()).expect("should be a list");
         assert!(elements.is_empty(), "list should be empty");
     }
 
@@ -982,7 +983,7 @@ mod tests {
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with comma");
         assert!(remaining.is_empty());
-        let elements = value::optics::view_list(value.as_ref()).expect("should be a list");
+        let elements = value::optics::preview_list(value.as_ref()).expect("should be a list");
         assert!(elements.is_empty(), "list should be empty");
     }
 
@@ -993,7 +994,7 @@ mod tests {
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with comma and space");
         assert!(remaining.is_empty());
-        let elements = value::optics::view_list(value.as_ref()).expect("should be a list");
+        let elements = value::optics::preview_list(value.as_ref()).expect("should be a list");
         assert!(elements.is_empty(), "list should be empty");
     }
 
@@ -1004,7 +1005,7 @@ mod tests {
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with space and comma");
         assert!(remaining.is_empty());
-        let list = value::optics::view_list(value.as_ref()).expect("should be a list");
+        let list = value::optics::preview_list(value.as_ref()).expect("should be a list");
         assert!(list.is_empty(), "list should be empty");
     }
 
@@ -1015,7 +1016,7 @@ mod tests {
         let result = parse::try_parse_list(env, input);
         let (remaining, value) = result.expect("should parse empty list with space, comma, and space");
         assert!(remaining.is_empty());
-        let list = value::optics::view_list(value.as_ref()).expect("should be a list");
+        let list = value::optics::preview_list(value.as_ref()).expect("should be a list");
         assert!(list.is_empty(), "list should be empty");
     }
 
@@ -1027,7 +1028,7 @@ mod tests {
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector");
         assert!(remaining.is_empty());
-        let vector = value::optics::view_vector(value.as_ref()).expect("should be a vector");
+        let vector = value::optics::preview_vector(value.as_ref()).expect("should be a vector");
         assert!(vector.is_empty(), "vector should be empty");
     }
 
@@ -1038,7 +1039,7 @@ mod tests {
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with space");
         assert!(remaining.is_empty());
-        let vector = value::optics::view_vector(value.as_ref()).expect("should be a vector");
+        let vector = value::optics::preview_vector(value.as_ref()).expect("should be a vector");
         assert!(vector.is_empty(), "vector should be empty");
     }
 
@@ -1049,7 +1050,7 @@ mod tests {
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with comma");
         assert!(remaining.is_empty());
-        let vector = value::optics::view_vector(value.as_ref()).expect("should be a vector");
+        let vector = value::optics::preview_vector(value.as_ref()).expect("should be a vector");
         assert!(vector.is_empty(), "vector should be empty");
     }
 
@@ -1060,7 +1061,7 @@ mod tests {
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with comma and space");
         assert!(remaining.is_empty());
-        let vector = value::optics::view_vector(value.as_ref()).expect("should be a vector");
+        let vector = value::optics::preview_vector(value.as_ref()).expect("should be a vector");
         assert!(vector.is_empty(), "vector should be empty");
     }
 
@@ -1071,7 +1072,7 @@ mod tests {
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with space and comma");
         assert!(remaining.is_empty());
-        let vector = value::optics::view_vector(value.as_ref()).expect("should be a vector");
+        let vector = value::optics::preview_vector(value.as_ref()).expect("should be a vector");
         assert!(vector.is_empty(), "vector should be empty");
     }
 
@@ -1082,7 +1083,7 @@ mod tests {
         let result = parse::try_parse_vector(env, input);
         let (remaining, value) = result.expect("should parse empty vector with space, comma, and space");
         assert!(remaining.is_empty());
-        let vector = value::optics::view_vector(value.as_ref()).expect("should be a vector");
+        let vector = value::optics::preview_vector(value.as_ref()).expect("should be a vector");
         assert!(vector.is_empty(), "vector should be empty");
     }
 
@@ -1094,7 +1095,7 @@ mod tests {
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set");
         assert!(remaining.is_empty());
-        let set = value::optics::view_set(value.as_ref()).expect("should be a set");
+        let set = value::optics::preview_set(value.as_ref()).expect("should be a set");
         assert!(set.is_empty(), "set should be empty");
     }
 
@@ -1105,7 +1106,7 @@ mod tests {
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with space");
         assert!(remaining.is_empty());
-        let set = value::optics::view_set(value.as_ref()).expect("should be a set");
+        let set = value::optics::preview_set(value.as_ref()).expect("should be a set");
         assert!(set.is_empty(), "set should be empty");
     }
 
@@ -1116,7 +1117,7 @@ mod tests {
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with comma");
         assert!(remaining.is_empty());
-        let set = value::optics::view_set(value.as_ref()).expect("should be a set");
+        let set = value::optics::preview_set(value.as_ref()).expect("should be a set");
         assert!(set.is_empty(), "set should be empty");
     }
 
@@ -1127,7 +1128,7 @@ mod tests {
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with comma and space");
         assert!(remaining.is_empty());
-        let set = value::optics::view_set(value.as_ref()).expect("should be a set");
+        let set = value::optics::preview_set(value.as_ref()).expect("should be a set");
         assert!(set.is_empty(), "set should be empty");
     }
 
@@ -1138,7 +1139,7 @@ mod tests {
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with space and comma");
         assert!(remaining.is_empty());
-        let set = value::optics::view_set(value.as_ref()).expect("should be a set");
+        let set = value::optics::preview_set(value.as_ref()).expect("should be a set");
         assert!(set.is_empty(), "set should be empty");
     }
 
@@ -1149,7 +1150,7 @@ mod tests {
         let result = parse::try_parse_set(env, input);
         let (remaining, value) = result.expect("should parse empty set with space, comma, and space");
         assert!(remaining.is_empty());
-        let set = value::optics::view_set(value.as_ref()).expect("should be a set");
+        let set = value::optics::preview_set(value.as_ref()).expect("should be a set");
         assert!(set.is_empty(), "set should be empty");
     }
 
@@ -1161,7 +1162,7 @@ mod tests {
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map");
         assert!(remaining.is_empty());
-        let map = value::optics::view_map(value.as_ref()).expect("should be a map");
+        let map = value::optics::preview_map(value.as_ref()).expect("should be a map");
         assert!(map.is_empty(), "map should be empty");
     }
 
@@ -1172,7 +1173,7 @@ mod tests {
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with space");
         assert!(remaining.is_empty());
-        let map = value::optics::view_map(value.as_ref()).expect("should be a map");
+        let map = value::optics::preview_map(value.as_ref()).expect("should be a map");
         assert!(map.is_empty(), "map should be empty");
     }
 
@@ -1183,7 +1184,7 @@ mod tests {
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with comma");
         assert!(remaining.is_empty());
-        let map = value::optics::view_map(value.as_ref()).expect("should be a map");
+        let map = value::optics::preview_map(value.as_ref()).expect("should be a map");
         assert!(map.is_empty(), "map should be empty");
     }
 
@@ -1194,7 +1195,7 @@ mod tests {
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with comma and space");
         assert!(remaining.is_empty());
-        let map = value::optics::view_map(value.as_ref()).expect("should be a map");
+        let map = value::optics::preview_map(value.as_ref()).expect("should be a map");
         assert!(map.is_empty(), "map should be empty");
     }
 
@@ -1205,7 +1206,7 @@ mod tests {
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with space and comma");
         assert!(remaining.is_empty());
-        let map = value::optics::view_map(value.as_ref()).expect("should be a map");
+        let map = value::optics::preview_map(value.as_ref()).expect("should be a map");
         assert!(map.is_empty(), "map should be empty");
     }
 
@@ -1216,7 +1217,7 @@ mod tests {
         let result = parse::try_parse_map(env, input);
         let (remaining, value) = result.expect("should parse empty map with space, comma, and space");
         assert!(remaining.is_empty());
-        let map = value::optics::view_map(value.as_ref()).expect("should be a map");
+        let map = value::optics::preview_map(value.as_ref()).expect("should be a map");
         assert!(map.is_empty(), "map should be empty");
     }
 
@@ -1228,7 +1229,7 @@ mod tests {
         let result = parse::try_parse_keyword(env.clone(), input);
         let (remaining, value) = result.expect("should parse keyword");
         assert_eq!(remaining, "(bar)");
-        let keyword = value::optics::view_keyword(value.as_ref()).expect("should be a keyword");
+        let keyword = value::optics::preview_keyword(value.as_ref()).expect("should be a keyword");
         assert!(keyword.is_unqualified(), "keyword should be unqualified");
         assert_eq!(keyword.name(), "foo");
 
@@ -1236,10 +1237,10 @@ mod tests {
         let list_result = parse::try_parse_list(env, remaining);
         let (list_remaining, list_value) = list_result.expect("should parse list");
         assert!(list_remaining.is_empty());
-        let elements = value::optics::view_list(list_value.as_ref()).expect("should be a list");
+        let elements = value::optics::preview_list(list_value.as_ref()).expect("should be a list");
         assert_eq!(elements.len(), 1, "list should contain one element");
         let element = elements.get_first().unwrap();
-        let symbol = value::optics::view_symbol(element.as_ref()).expect("element should be a symbol");
+        let symbol = value::optics::preview_symbol(element.as_ref()).expect("element should be a symbol");
         assert_eq!(symbol.name(), "bar");
     }
 
@@ -1250,7 +1251,7 @@ mod tests {
         let result = parse::try_parse_keyword(env.clone(), input);
         let (remaining, value) = result.expect("should parse keyword");
         assert_eq!(remaining, "[bar]");
-        let keyword = value::optics::view_keyword(value.as_ref()).expect("should be a keyword");
+        let keyword = value::optics::preview_keyword(value.as_ref()).expect("should be a keyword");
         assert!(keyword.is_unqualified(), "keyword should be unqualified");
         assert_eq!(keyword.name(), "foo");
 
@@ -1258,10 +1259,10 @@ mod tests {
         let vector_result = parse::try_parse_vector(env, remaining);
         let (vector_remaining, vector_value) = vector_result.expect("should parse vector");
         assert!(vector_remaining.is_empty());
-        let elements = value::optics::view_vector(vector_value.as_ref()).expect("should be a vector");
+        let elements = value::optics::preview_vector(vector_value.as_ref()).expect("should be a vector");
         assert_eq!(elements.len(), 1, "vector should contain one element");
         let element = elements.get_first().unwrap();
-        let symbol = value::optics::view_symbol(element.as_ref()).expect("element should be a symbol");
+        let symbol = value::optics::preview_symbol(element.as_ref()).expect("element should be a symbol");
         assert_eq!(symbol.name(), "bar");
     }
 
@@ -1272,7 +1273,7 @@ mod tests {
         let result = parse::try_parse_symbol(env.clone(), input);
         let (remaining, value) = result.expect("should parse symbol");
         assert_eq!(remaining, "[bar]");
-        let symbol = value::optics::view_symbol(value.as_ref()).expect("should be a symbol");
+        let symbol = value::optics::preview_symbol(value.as_ref()).expect("should be a symbol");
         assert!(symbol.is_unqualified(), "symbol should be unqualified");
         assert_eq!(symbol.name(), "foo");
 
@@ -1280,10 +1281,10 @@ mod tests {
         let vector_result = parse::try_parse_vector(env, remaining);
         let (vector_remaining, vector_value) = vector_result.expect("should parse vector");
         assert!(vector_remaining.is_empty());
-        let elements = value::optics::view_vector(vector_value.as_ref()).expect("should be a vector");
+        let elements = value::optics::preview_vector(vector_value.as_ref()).expect("should be a vector");
         assert_eq!(elements.len(), 1, "vector should contain one element");
         let element = elements.get_first().unwrap();
-        let symbol = value::optics::view_symbol(element.as_ref()).expect("element should be a symbol");
+        let symbol = value::optics::preview_symbol(element.as_ref()).expect("element should be a symbol");
         assert_eq!(symbol.name(), "bar");
     }
 
@@ -1294,7 +1295,7 @@ mod tests {
         let symbol_result = parse::try_parse_symbol(env.clone(), input);
         let (remaining, value) = symbol_result.expect("should parse symbol");
         assert_eq!(remaining, "(bar)");
-        let symbol = value::optics::view_symbol(value.as_ref()).expect("should be a symbol");
+        let symbol = value::optics::preview_symbol(value.as_ref()).expect("should be a symbol");
         assert!(symbol.is_unqualified(), "symbol should be unqualified");
         assert_eq!(symbol.name(), "foo");
 
@@ -1302,10 +1303,10 @@ mod tests {
         let list_result = parse::try_parse_list(env, remaining);
         let (list_remaining, list_value) = list_result.expect("should parse list");
         assert!(list_remaining.is_empty());
-        let list = value::optics::view_list(list_value.as_ref()).expect("should be a list");
+        let list = value::optics::preview_list(list_value.as_ref()).expect("should be a list");
         assert_eq!(list.len(), 1, "list should contain one element");
         let element = list.get_first().unwrap();
-        let symbol = value::optics::view_symbol(element.as_ref()).expect("element should be a symbol");
+        let symbol = value::optics::preview_symbol(element.as_ref()).expect("element should be a symbol");
         assert_eq!(symbol.name(), "bar");
     }
 }

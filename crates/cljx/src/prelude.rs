@@ -15,4 +15,4 @@ pub use crate::environment::{self, Environment, RcEnvironment};
 pub use crate::read::{self, read_one, read_one_v2, CompleteRead, IncompleteRead, ReadOutput, UnexpectedEndOfInputError, TypeErasedError, ReadError};
 pub use crate::read2::{self, read};
 pub use crate::core::{self, eval, apply, try_resolve, resolve_or_panic, ResolveError};
-pub use crate::optics::{self, IPrismOwn, IPrismRef, Prism, PrismRef};
+pub use crate::prism::{self, Prism, PrismNil};

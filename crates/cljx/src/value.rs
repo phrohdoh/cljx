@@ -3,6 +3,7 @@ use crate::prelude::*;
 
 mod from;
 pub mod optics;
+pub mod partials;
 
 pub type RcValue = Rc<Value>;
 
@@ -440,7 +441,7 @@ impl Value {
     pub fn try_get_handle<T>(self: &'_ Value) -> Result<T, GetHandleError>
     where T: IHandle + Clone + 'static
     {
-        value::optics::view_handle(self)
+        value::optics::preview_handle(self)
             .ok_or(GetHandleError::IncorrectValueType)
             .and_then(|handle| handle.downcast_ref::<T>()
                 .map(|ref_t| ref_t.to_owned())
@@ -450,7 +451,7 @@ impl Value {
     pub fn try_get_handle_ref<'t, T>(&'t self) -> Result<Ref<'t, T>, GetHandleError>
     where T: IHandle + 'static
     {
-        value::optics::view_handle_ref(self)
+        value::optics::preview_handle_ref(self)
             .ok_or(GetHandleError::IncorrectValueType)
             .and_then(|handle| handle.downcast_ref::<T>()
                 .ok_or(GetHandleError::IncorrectHandleType))
@@ -459,7 +460,7 @@ impl Value {
     pub fn try_get_handle_mut<T>(self: &'_ Value) -> Result<RefMut<'_, T>, GetHandleError>
     where T: IHandle + 'static
     {
-        value::optics::view_handle_ref(self)
+        value::optics::preview_handle_ref(self)
             .ok_or(GetHandleError::IncorrectValueType)
             .and_then(|handle| handle.downcast_mut::<T>()
                 .ok_or(GetHandleError::IncorrectHandleType))
